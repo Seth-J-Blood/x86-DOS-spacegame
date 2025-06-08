@@ -55,9 +55,9 @@ C_PLAYERDATA_DODGE_FRAMES   EQU 5           ; how many frames the player's ship 
 C_PLAYERDATA_HIT_FRAMES     EQU 30          ; how many frames the player's ship is invulnerable for after being hit
 C_PLAYERDATA_MOVE_PIX       EQU 3           ; how many pixels per frame the ship moves when a movement key is held down (and ship is not boosting)
 C_PLAYERDATA_MOVE_BOOST_PIX EQU 5           ; how many pixels per frame the ship moves when a movement key is held down (and ship is boosting)
-C_PLAYERDATA_BOOST_REFRESH  EQU 1           ; how much the boost refreshes every frame if not being used
-C_PLAYERDATA_BOOST_USAGE    EQU 3           ; how much boost gets used every frame while being used
-C_PLAYERDATA_MAX_BOOST      EQU 450
+C_PLAYERDATA_BOOST_REFRESH  EQU 2           ; how much the boost refreshes every frame if not being used
+C_PLAYERDATA_BOOST_USAGE    EQU 5           ; how much boost gets used every frame while being used
+C_PLAYERDATA_MAX_BOOST      EQU 120
 C_PLAYERDATA_FIRERATE       EQU 5           ; how many frames in between player attacks. DO NOT MAKE MORE THAN 255
 C_PLAYERDATA_BULLET_X_OFF   EQU C_PLAYERDATA_WIDTH      ; how much to add to spawned bullets' x positions
 C_PLAYERDATA_BULLET_Y_OFF   EQU C_PLAYERDATA_HEIGHT - 2 ; how much to add to spawned bullets' y positions
@@ -79,8 +79,9 @@ C_BULLET_SPEED_OFFSET       EQU 8       ; byte
 C_BULLET_DAMAGE_OFFSET      EQU 9       ; byte
 
 ; BULLET FLAGS ;
-C_BULLET_FLAG_MOVEMENT_NEG  EQU 0
-C_BULLET_FLAG_VERTICAL      EQU 1
+C_BULLET_FLAG_MOVEMENT_NEG  EQU 0       ; if true, the bullet subtracts its speed from its position insteading of adding to it
+C_BULLET_FLAG_VERTICAL      EQU 1       ; if true, the bullet will move on its Y-axis instead of its X-axis
+C_BULLET_FLAG_HOSTILE       EQU 2       ; if true, the bullet will damage the player and ignore enemies
 
 
 ;************************************************************************************************************************************************************
@@ -94,7 +95,7 @@ section .data:
     DAT_PLAYER_POS_Y                    DW  100                     ; [UINT16] the y-position of the top-left pixel of the player
     DAT_PLAYER_HEALTH                   DW  500                     ; [UINT16] the current health of the player. If this reaches zero, the player dies
     DAT_PLAYER_SCORE                    DW  0                       ; [UINT16] the current score of the player
-    DAT_PLAYER_BOOST_REMAINING          DW  450                     ; [UINT16] how much boost the player has left. Every frame unused, boost goes up 1. Every frame used, boost goes down 3.
+    DAT_PLAYER_BOOST_REMAINING          DW  C_PLAYERDATA_MAX_BOOST  ; [UINT16] how much boost the player has left. Every frame unused, boost goes up 1. Every frame used, boost goes down 5.
     DAT_PLAYER_DODGE_FRAMES_REMAINING   DB  0                       ; [UINT8] how many frames of invulnerability the player has remaining. FPS = 20
     DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK DB  C_PLAYERDATA_FIRERATE   ; [UINT8] how many frames have passed since the user attacked last. Capped at 15
 
@@ -117,6 +118,22 @@ section .data:
                                         DB  3, 0x00, 1, 0x2C, 2, 0x00, 1, 0x2C, 5, 0x00, 1, 0x2C, 3, 0x00, 1, 0x2C, 2, 0x00, 1, 0x2C, 2, 0x00, 1, 0x2C, 3, 0x00, 1, 0x2C, 0
                                         DB  3, 0x00, 1, 0x2C, 2, 0x00, 1, 0x2C, 5, 0x00, 1, 0x2C, 3, 0x00, 1, 0x2C, 2, 0x00, 1, 0x2C, 3, 0x00, 1, 0x2C, 2, 0x00, 1, 0x2C, 5, 0x00, 1, 0x2C, 0
                                         DB  3, 0x2C, 4, 0x00, 3, 0x2C, 3, 0x00, 3, 0x2C, 3, 0x00, 1, 0x2C, 3, 0x00, 1, 0x2C, 2, 0x00, 4, 0x2C, 0, 0
+
+    IMG_BOOST_TEXT                      DB  3, 0x2D, 3, 0x00, 2, 0x2D, 3, 0x00, 2, 0x2D, 3, 0x00, 2, 0x2D, 1, 0x00, 3, 0x2D, 0
+                                        DB  1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 1, 0x2D, 4, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 0
+                                        DB  4, 0x2D, 1, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 3, 0x2D, 2, 0x00, 1, 0x2D, 0
+                                        DB  1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 1, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 3, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 2, 0x00, 1, 0x2D, 0
+                                        DB  3, 0x2D, 3, 0x00, 2, 0x2D, 3, 0x00, 2, 0x2D, 2, 0x00, 2, 0x2D, 3, 0x00, 1, 0x2D, 0, 0
+
+    IMG_BOOST_OUTLINE                   DB  24, 0x15, 0
+                                        DB  24, 0x15, 0
+                                        DB  24, 0x15, 0
+                                        DB  24, 0x15, 0, 0
+
+    IMG_BOOST_UNDERBAR                  DB  22, 0x18, 0
+                                        DB  22, 0x18, 0, 0
+
+
 
     DAT_BULLET_ARRAY                    TIMES C_BULLET_MAX_BULLETS * (C_BULLET_SIZE_BYTES / 2) DW 0xFFFF    ; 0xFFFF (above 320/200) for pos data means free slot
     DAT_END_OF_BULLET_ARRAY:
@@ -181,6 +198,29 @@ FUNC_INIT_GAME:
     MOV     BL, 0xFF            ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
 
+    ; DRAW TEXT: "BOOST:" ONTO SCREEN
+    MOV     AX, 2               ; PARAM: Y POSITION
+    MOV     DX, 260             ; PARAM: X POSITION
+    MOV     SI, IMG_BOOST_TEXT  ; PARAM: IMAGE (RLE-encoded)
+    MOV     BL, 0xFF            ; PARAM: BITMASK
+    CALL    FUNC_DRAW_IMAGE
+
+    ; DRAW BOOST BAR BACKGROUND ONTO SCREEN
+    MOV     AX, 14                  ; PARAM: Y POSITION
+    MOV     DX, 260                 ; PARAM: X POSITION
+    MOV     SI, IMG_BOOST_OUTLINE   ; PARAM: IMAGE (RLE-encoded)
+    MOV     BL, 0xFF                ; PARAM: BITMASK
+    CALL    FUNC_DRAW_IMAGE
+
+    ; DRAW BOOST BAR UNDERBAR ONTO SCREEN
+    MOV     AX, 16                  ; PARAM: Y POSITION
+    MOV     DX, 262                 ; PARAM: X POSITION
+    MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RLE-encoded)
+    MOV     BL, 0xFF                ; PARAM: BITMASK
+    CALL    FUNC_DRAW_IMAGE
+
+    
+
     ; SAVE START TIMESTAMP INTO DAT_LAST_FRAME_UPDATE ;
     MOV     AH, 0x2C        ; INT 0x21 | AH 0x2C: GET SYSTEM TIME. CH = HOUR, CL = MIN, DH = SEC, DL = CENTISECONDS
     INT     0x21
@@ -211,17 +251,18 @@ FUNC_LOGIC_STEP:
     LAB_CHECK_PLAYER_BOOSTING:
         BT      AX, C_FLAG_BOOST                            ; check if the player is boosting. If so, check if they CAN boost
         JNC     LAB_INC_BOOST                               ; if the player is not attempting to boost, increment their boost fuel by the refresh rate (if they are not at the max)
-        CMP     WORD [DAT_PLAYER_DODGE_FRAMES_REMAINING], C_PLAYERDATA_BOOST_USAGE
+        CMP     WORD [DAT_PLAYER_BOOST_REMAINING], C_PLAYERDATA_BOOST_USAGE
         JB      LAB_INC_BOOST                               ; if the player does not have enough boost remaining to boost this frame, increment their boost
         TEST    AX, C_ANY_MOVEMENT_FLAG                     ; check if the player will be moving this frame
         JZ      LAB_INC_BOOST                               ; if the player is not moving, do not subtract from their boost
-        SUB     WORD [DAT_PLAYER_DODGE_FRAMES_REMAINING], C_PLAYERDATA_BOOST_USAGE
+        SUB     WORD [DAT_PLAYER_BOOST_REMAINING], C_PLAYERDATA_BOOST_USAGE
         MOV     CX, C_PLAYERDATA_MOVE_BOOST_PIX             ; if the player can boost, make their movement boost speed rather than default speed
         JMP     LAB_CHECK_PLAYER_MOVES_UP                   ; continue checking for player states
 
         LAB_INC_BOOST:
-        MOV     BX, C_PLAYERDATA_BOOST_REFRESH              ; load refresh boost amount into BX
-        ADD     WORD [DAT_PLAYER_BOOST_REMAINING], BX       ; add refresh boost amount to player's remaining boost
+        CMP     WORD [DAT_PLAYER_BOOST_REMAINING], C_PLAYERDATA_MAX_BOOST       ; if the boost has reached max, skip adding boost
+        JNB     LAB_CHECK_PLAYER_MOVES_UP
+        ADD     WORD [DAT_PLAYER_BOOST_REMAINING], C_PLAYERDATA_BOOST_REFRESH   ; add refresh boost amount to player's remaining boost
 
     LAB_CHECK_PLAYER_MOVES_UP:
         BT      AX, C_FLAG_MOVE_UP                          ; check if the player needs to move up
@@ -289,8 +330,7 @@ FUNC_LOGIC_STEP:
         JMP     LAB_CHECK_GAME_QUIT
         
         LAB_PLAYER_CANNOT_FIRE:
-            INC     BH                                      ; update player frames since last attack. This should never go above C_PLAYERDATA_FIRERATE.
-            MOV     BYTE [DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK], BH
+            INC     BYTE [DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK]  ; update player frames since last attack. This should never go above C_PLAYERDATA_FIRERATE.
 
     LAB_CHECK_GAME_QUIT:
         BT      AX, C_FLAG_QUIT                             ; check if the game needs to quit
@@ -345,6 +385,51 @@ FUNC_LOGIC_STEP:
             JMP     LAB_MOVE_BULLET_LOOP
 
     LAB_RENDER_SCREEN:
+    ; UPDATE PLAYER HEALTH BAR AND PLAYER BOOST BAR ;   
+
+    ; DRAW BOOST BAR UNDERBAR ONTO SCREEN
+    MOV     AX, 16                  ; PARAM: Y POSITION
+    MOV     DX, 262                 ; PARAM: X POSITION
+    MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RLE-encoded)
+    MOV     BL, 0xFF                ; PARAM: BITMASK
+    CALL    FUNC_DRAW_IMAGE
+
+    ; DRAW BOOST BAR ONTO SCREEN
+    MOV     AX, 0xA000
+    MOV     ES, AX                      ; VGA segment
+    MOV     AX, (16 * 320) + 262        ; coords (262, 16)
+    MOV     DI, AX
+
+    ; GET NUMBER OF PIXELS TO DISPLAY TO SCREEN: (44 * BOOST)/ MAX_BOOST
+    MOV     AX, WORD [DAT_PLAYER_BOOST_REMAINING]
+
+    MOV     BX, 44                      ; multiply AX by 44
+    MUL     BX
+
+    MOV     BX, C_PLAYERDATA_MAX_BOOST  ; divide AX by MAX_BOOST
+    DIV     BX
+    
+    MOV     BX, AX                      ; save result in BX
+    MOV     CX, AX                      ; loop: display AX pixels to screen
+    MOV     AL, 0x2B                    ; orange bar
+    REP     STOSB
+
+    ADD     DI, 320
+    SUB     DI, BX                      ; go to next line
+    MOV     CX, BX                      ; loop: display BX pixels to screen
+    REP     STOSB
+
+    ADD     DI, 320
+    SUB     DI, BX                      ; go to next line
+    MOV     CX, BX                      ; loop: display BX pixels to screen
+    REP     STOSB
+
+    ADD     DI, 320
+    SUB     DI, BX                      ; go to next line
+    MOV     CX, BX                      ; loop: display BX pixels to screen
+    REP     STOSB
+
+    ; RENDER NEW FRAME
     MOV     BL, 0xFF                    ; PARAM: BITMASK
     CALL    FUNC_RENDER_SCREEN          ; draw new frame to screen
  
@@ -602,7 +687,7 @@ FUNC_QUIT_GAME:
 
 ;************************************************************************************************************************************************************
 ; VOID DRAW_IMAGE(UINT16 YPOS, UINT16 XPOS, NPTR IMAGE, UINT8 DRAWMASK)
-; draws a RLE-encoded sprite to the screen, ending on the first double zero. Each line ends at a zero.
+; draws a RLE-encoded sprite to the screen, ending on the first double zero. Each line ends at a zero. Images do not wrap around screen.
 ;************************************************************************************************************************************************************
 ; ( PARAMS )
 ; AX: [UINT16]  YPOS    - the y position of the image's top left pixel
@@ -611,6 +696,10 @@ FUNC_QUIT_GAME:
 ; SI: [NPTR]    IMAGE   - the offset of the image from DS
 ;
 FUNC_DRAW_IMAGE:
+    ; SETUP STACK FRAME ;
+    PUSH    BP
+    MOV     BP, SP
+
     PUSH ES
     PUSH DI
     PUSH CX
@@ -628,6 +717,7 @@ FUNC_DRAW_IMAGE:
     ADD     AX, DX  ; add X to (Y * 320)
     MOV     DI, AX  ; save (Y * 320) + X in DI
 
+    PUSH    DX              ; save DX in the stack, we will retreive this value to keep track of original parameter
     MOV     DX, 0           ; use DX to keep track of how many pixels have been drawn this line
     LAB_DRAW_LOOP:
         MOV     CL, BYTE [SI]   ; load run length into CL, draw pixel into CH
@@ -640,6 +730,11 @@ FUNC_DRAW_IMAGE:
         JZ      LAB_DRAW_NEWLINE
 
         LAB_DRAW_PIXEL_LOOP:
+            MOV     AX, WORD SS:[BP - 8]    ; load X-param into AX, 4 (4 * 2) stack entries before this
+            ADD     AX, DX                  ; if Xpos + drawnPixels >= 319, stop drawing this line. 319 because that's the final index of a row
+            CMP     AX, 319
+            JAE     lAB_FIND_NEXT_LINE
+
             MOV     BYTE ES:[DI], CH        ; draw pixel
             AND     BYTE ES:[DI], BL
             MOV     BYTE ES:[DI + 1], CH    ; draw pixel again
@@ -650,15 +745,36 @@ FUNC_DRAW_IMAGE:
             AND     BYTE ES:[DI + 321], BL
             ADD     DI, 2               ; add two to DI
             ADD     DX, 2               ; add two to DX, keeping track of how many pixels were drawn on this line
+
             DEC     CL                  ; subtract one from CL
         TEST    CL, CL
         JZ      LAB_CONTINUE_DRAW_LOOP  ; if CL is zero, stop loop
         JMP     LAB_DRAW_PIXEL_LOOP
+
+        lAB_FIND_NEXT_LINE:
+            MOV     AX, WORD [SI]       ; look at current pixel-chunk
+            TEST    AH, AH              ; if second byte (color) is zero, check if this is the end of the picture
+            JZ      LAB_CHECK_END_OF_IMAGE
+            TEST    AL, AL              ; otherwise, check if the first pixel (run length) is zero. If it is, that is the newline (and where we need to end SI at)
+            LAB_NOT_END_OF_IMAGE:
+            JNZ     LAB_ITERATE_IMAGE_CHECKER   ; if it is not a newline, iterate SI.
+            JMP     LAB_DRAW_NEWLINE            ; if we found our newline, continue drawing
+
+            LAB_CHECK_END_OF_IMAGE:
+                TEST    AL, AL              ; if first pixel is zero (and second pixel is zero), stop drawing
+                JZ      LAB_STOP_DRAW_LOOP
+                JMP     LAB_ITERATE_IMAGE_CHECKER   ; otherwise, just continue
+
+            LAB_ITERATE_IMAGE_CHECKER:
+                ADD     SI, 2               ; move SI onto the next pixel
+                JMP     lAB_FIND_NEXT_LINE  ; continue looping
+
+
              
         LAB_DRAW_NEWLINE:
         ADD     DI, 640             ; move DI down two lines
         SUB     DI, DX              ; subtract DX to set the draw cursor to the original x position
-        MOV     DX, 0               ; reset line counter
+        MOV     DX, 0               ; reset drawnPixels counter
         INC     SI                  ; move onto next byte
         JMP     LAB_DRAW_LOOP
 
@@ -675,9 +791,13 @@ FUNC_DRAW_IMAGE:
         JMP     LAB_DRAW_LOOP
 
     LAB_STOP_DRAW_LOOP:
+    POP DX
     POP CX
     POP DI
     POP ES
+
+    ; COLLAPSE STACK FRAME
+    POP     BP
     RET
 
 
@@ -736,7 +856,7 @@ FUNC_CREATE_BULLET:
 
 ;************************************************************************************************************************************************************
 ; VOID RENDER_SCREEN(UINT8 BITMASK)
-; creates a bullet at X, Y with a SPEED and flags that control the bullet's behavior. Automatically checks bullet buffer and adds the bullet to a free slot.
+; renders the entire screen, looping through bullets, enemies, and the player, as well as score. Has a bitmask for clearing old screen.
 ;************************************************************************************************************************************************************
 ; ( PARAMS )
 ; BL: [UINT8]   BITMASK     - the bitmask to apply to any pixels drawn in this function.
@@ -747,6 +867,8 @@ FUNC_RENDER_SCREEN:
     PUSH    DX
     PUSH    SI
     PUSH    DI
+
+    ; UPDATE PLAYER STATS ;
 
     ; DRAW PLAYER ;
     MOV     AX, WORD [DAT_PLAYER_POS_Y]     ; PARAM: DRAW Y
