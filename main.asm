@@ -69,7 +69,7 @@ C_PLAYERFLAG_HAS_RELEASED_DODGE EQU 0       ; whether or not the player has rele
 
 
 ; BULLET CONSTANTS ;
-C_BULLET_MAX_BULLETS        EQU 20
+C_BULLET_MAX_BULLETS        EQU 30
 C_BULLET_SIZE_BYTES         EQU 10
 C_BULLET_X_OFFSET           EQU 0       ; word
 C_BULLET_Y_OFFSET           EQU 2       ; word
@@ -83,6 +83,20 @@ C_BULLET_FLAG_MOVEMENT_NEG  EQU 0       ; if true, the bullet subtracts its spee
 C_BULLET_FLAG_VERTICAL      EQU 1       ; if true, the bullet will move on its Y-axis instead of its X-axis
 C_BULLET_FLAG_HOSTILE       EQU 2       ; if true, the bullet will damage the player and ignore enemies
 
+
+; ENEMIY CONSTANTS ;
+C_ENEMY_MAX_ENEMIES         EQU 15
+C_ENEMY_SIZE_BYTES          EQU 16
+C_ENEMY_X_OFFSET            EQU 0       ; word
+C_ENEMY_Y_OFFSET            EQU 2       ; word
+C_ENEMY_FLAGS_OFFSET        EQU 4       ; word
+C_ENEMY_IMAGE_OFFSET        EQU 6       ; word
+C_ENEMY_HEALTH_OFFSET       EQU 8       ; word
+C_ENEMY_SPEED_OFFSET        EQU 10      ; byte
+C_ENEMY_DAMAGE_OFFSET       EQU 11      ; byte
+C_ENEMY_CODE_OFFSET         EQU 12      ; word
+C_ENEMY_ATTACK_FRAME_OFFSET EQU 14      ; byte
+C_ENEMY_FIRERATE_OFFSET     EQU 15      ; byte
 
 ;************************************************************************************************************************************************************
 ;                                                                   ( .DATA SECTION )
@@ -133,10 +147,20 @@ section .data:
     IMG_BOOST_UNDERBAR                  DB  22, 0x18, 0
                                         DB  22, 0x18, 0, 0
 
-
+    IMG_ALIEN_SPITTER                   DB 2, 0x00, 1, 0x22, 2, 0x00, 3, 0x22, 0
+                                        DB 1, 0x00, 1, 0x22, 1, 0x00, 6, 0x22, 3, 0x23, 0
+                                        DB 2, 0x23, 2, 0x00, 1, 0x22, 2, 0x0F, 1, 0x22, 2, 0x23, 0
+                                        DB 3, 0x00, 1, 0x23, 1, 0x0F, 1, 0x26, 2, 0x0F, 1, 0x22, 3, 0x23, 0
+                                        DB 3, 0x00, 1, 0x23, 1, 0x0F, 1, 0x26, 2, 0x0F, 1, 0x22, 2, 0x23, 0
+                                        DB 2, 0x23, 2, 0x00, 1, 0x22, 2, 0x0F, 1, 0x22, 1, 0x23, 1, 0x22, 3, 0x23, 0
+                                        DB 1, 0x00, 1, 0x22, 1, 0x00, 6, 0x22, 2, 0x23, 0
+                                        DB 2, 0x00, 1, 0x22, 2, 0x00, 3, 0x22, 0, 0
 
     DAT_BULLET_ARRAY                    TIMES C_BULLET_MAX_BULLETS * (C_BULLET_SIZE_BYTES / 2) DW 0xFFFF    ; 0xFFFF (above 320/200) for pos data means free slot
     DAT_END_OF_BULLET_ARRAY:
+
+    DAT_ENEMY_ARRAY                     TIMES C_ENEMY_MAX_ENEMIES * (C_ENEMY_SIZE_BYTES / 2) DW 0xFFFF
+    DAT_END_OF_ENEMY_ARRAY:
 
     STR_QUIT_MSG                        DB  'Shutdown was initiated! Error code: ?', 0x0A, 0x0D, '$'
     STR_DEBUG_MSG                       DB  '!DEBUG!', 0x0A, 0x0D, '$'
@@ -191,41 +215,50 @@ FUNC_INIT_GAME:
 	MOV AL, 0x13
 	INT 0x10
 
-    ; DRAW TEXT : "SCORE:" ONTO SCREEN
+    ; DRAW TEXT : "SCORE:" ONTO SCREEN ;
     MOV     AX, 2               ; PARAM: Y POSITION
     MOV     DX, 2               ; PARAM: X POSITION
-    MOV     SI, IMG_SCORE_TEXT  ; PARAM: IMAGE (RLE-encoded)
+    MOV     SI, IMG_SCORE_TEXT  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF            ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
 
-    ; DRAW TEXT: "BOOST:" ONTO SCREEN
+    ; DRAW TEXT: "BOOST:" ONTO SCREEN ;
     MOV     AX, 2               ; PARAM: Y POSITION
     MOV     DX, 260             ; PARAM: X POSITION
-    MOV     SI, IMG_BOOST_TEXT  ; PARAM: IMAGE (RLE-encoded)
+    MOV     SI, IMG_BOOST_TEXT  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF            ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
 
-    ; DRAW BOOST BAR BACKGROUND ONTO SCREEN
+    ; DRAW BOOST BAR BACKGROUND ONTO SCREEN ;
     MOV     AX, 14                  ; PARAM: Y POSITION
     MOV     DX, 260                 ; PARAM: X POSITION
-    MOV     SI, IMG_BOOST_OUTLINE   ; PARAM: IMAGE (RLE-encoded)
+    MOV     SI, IMG_BOOST_OUTLINE   ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
 
-    ; DRAW BOOST BAR UNDERBAR ONTO SCREEN
+    ; DRAW BOOST BAR UNDERBAR ONTO SCREEN ;
     MOV     AX, 16                  ; PARAM: Y POSITION
     MOV     DX, 262                 ; PARAM: X POSITION
-    MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RLE-encoded)
+    MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
-
-    
 
     ; SAVE START TIMESTAMP INTO DAT_LAST_FRAME_UPDATE ;
     MOV     AH, 0x2C        ; INT 0x21 | AH 0x2C: GET SYSTEM TIME. CH = HOUR, CL = MIN, DH = SEC, DL = CENTISECONDS
     INT     0x21
 
     MOV     BYTE [DAT_LAST_FRAME_UPDATE], DL
+
+    ; TEST: CREATE ENEMY ;
+    MOV     AX, 50                  ; PARAM: Y POSITION
+    MOV     DX, 200                 ; PARAM: X POSITION
+    PUSH    0x0000                  ; PARAM: FLAGS
+    MOV     BL, 3                   ; PARAM: SPEED
+    MOV     BH, 4                   ; PARAM: DAMAGE
+    MOV     SI, IMG_ALIEN_SPITTER   ; PARAM: IMAGE (RL-encoded)
+    PUSH    FUNC_DEBUG_VGA          ; PARAM: AI CODE
+    PUSH    15                      ; PARAM: FIRERATE
+    CALL    FUNC_CREATE_ENEMY
 
     ; START MAIN LOOP ;
     ; * this automatically goes to LOGIC_STEP() * ;
@@ -240,7 +273,7 @@ FUNC_INIT_GAME:
 ;
 FUNC_LOGIC_STEP:
     ; CHECK PLAYER KEY STATES AND UPDATE PLAYER STATS BASED ON THEM ;
-    
+
     MOV     BL, 0x00    ; PARAM: BITMASK
     CALL    FUNC_RENDER_SCREEN
 
@@ -321,7 +354,7 @@ FUNC_LOGIC_STEP:
         ADD     AX, C_PLAYERDATA_BULLET_Y_OFF                   ; PARAM: ADD Y OFFSET TO BULLET Y
         MOV     DX, WORD [DAT_PLAYER_POS_X]                 ; PARAM: DRAW X
         ADD     DX, C_PLAYERDATA_BULLET_X_OFF                   ; PARAM: ADD X OFFSET TO BULLET X
-        MOV     SI, IMG_PLAYER_BULLET                       ; PARAM: IMAGE (RLE-encoded)
+        MOV     SI, IMG_PLAYER_BULLET                       ; PARAM: IMAGE (RL-encoded)
         MOV     CX, 0                                       ; PARAM: FLAGS
         MOV     BH, C_PLAYERDATA_BULLET_SPEED               ; PARAM: BULLET SPEED
         MOV     BL, C_PLAYERDATA_BULLET_DAMAGE              ; PARAM: BULLET DAMAGE
@@ -343,13 +376,11 @@ FUNC_LOGIC_STEP:
     MOV     SI, DAT_BULLET_ARRAY
     LAB_MOVE_BULLET_LOOP:
         ; CHECK IF BULLET X IS VALID ;
-        MOV     AX, WORD [SI + C_BULLET_X_OFFSET]
-        CMP     AX, 320     ; if bullet.x > 320, it is invalid and should not be dealt with.
+        CMP     WORD [SI + C_BULLET_X_OFFSET], 320     ; if bullet.x > 320, it is invalid and should not be dealt with.
         JA      LAB_CONTINUE_BULLET_LOOP
 
         ; CHECK IF BULLET Y IS VALID ;
-        MOV     AX, WORD [SI + C_BULLET_Y_OFFSET]
-        CMP     AX, 200     ; if bullet.y > 200, it is invalid and should not be dealth with.
+        CMP     WORD [SI + C_BULLET_Y_OFFSET], 200     ; if bullet.y > 200, it is invalid and should not be dealth with.
         JA      LAB_CONTINUE_BULLET_LOOP
 
         ; ****** UPDATE BULLET ****** ;
@@ -390,7 +421,7 @@ FUNC_LOGIC_STEP:
     ; DRAW BOOST BAR UNDERBAR ONTO SCREEN
     MOV     AX, 16                  ; PARAM: Y POSITION
     MOV     DX, 262                 ; PARAM: X POSITION
-    MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RLE-encoded)
+    MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
 
@@ -400,7 +431,7 @@ FUNC_LOGIC_STEP:
     MOV     AX, (16 * 320) + 262        ; coords (262, 16)
     MOV     DI, AX
 
-    ; GET NUMBER OF PIXELS TO DISPLAY TO SCREEN: (44 * BOOST)/ MAX_BOOST
+    ; GET NUMBER OF PIXELS TO DISPLAY TO SCREEN: (44 * BOOST)/MAX_BOOST
     MOV     AX, WORD [DAT_PLAYER_BOOST_REMAINING]
 
     MOV     BX, 44                      ; multiply AX by 44
@@ -486,6 +517,7 @@ FUNC_DEBUG_MSG:
 
     RET
 
+
 ;************************************************************************************************************************************************************
 ; VOID DEBUG_VGA()
 ; displays the a red pixel on the top left of the screen, moving the pixel location by one to the right every time called again.
@@ -514,6 +546,7 @@ FUNC_DEBUG_VGA:
     POP DI
     POP ES
     RET
+
 
 ;************************************************************************************************************************************************************
 ; VOID HANDLE_KEY()
@@ -649,6 +682,7 @@ FUNC_HANDLE_KEY:
     POP AX
     IRET
 
+
 ;************************************************************************************************************************************************************
 ; VOID QUIT_GAME(INT16 ERR_CODE)
 ; restores the old INT 0x09 keyboard interrupt to the IVT, displays a message containing the error code: "Game terminated with error ?", and kills program
@@ -687,7 +721,7 @@ FUNC_QUIT_GAME:
 
 ;************************************************************************************************************************************************************
 ; VOID DRAW_IMAGE(UINT16 YPOS, UINT16 XPOS, NPTR IMAGE, UINT8 DRAWMASK)
-; draws a RLE-encoded sprite to the screen, ending on the first double zero. Each line ends at a zero. Images do not wrap around screen.
+; draws a RL-encoded sprite to the screen, ending on the first double zero. Each line ends at a zero. Images do not wrap around screen.
 ;************************************************************************************************************************************************************
 ; ( PARAMS )
 ; AX: [UINT16]  YPOS    - the y position of the image's top left pixel
@@ -816,19 +850,19 @@ FUNC_DRAW_IMAGE:
 FUNC_CREATE_BULLET:
     PUSH DI
 
-    ; CHECK FOR A FREE SLOT IN BULLETS ARRAY (XPOS > 320 OR YPOS > 200) ;
+    ; CHECK FOR A FREE SLOT IN BULLETS ARRAY (XPOS >= 320 OR YPOS >= 200) ;
     PUSH    AX                  ; save AX, for computational purposes
     MOV     DI, DAT_BULLET_ARRAY; load array offset into DI
 
     LAB_CHECK_BULLET_X:
         MOV     AX, 320                             ; screen width=320, so max x=320, so anything above this is free
         CMP     WORD [DI + C_BULLET_X_OFFSET], AX   ; check if DI[i].xPos is above 320
-        JA      LAB_SPAWN_BULLET                    ; if so, this slot is free and we can spawn something. Otherwise, check bullet Y
+        JAE     LAB_SPAWN_BULLET                    ; if so, this slot is free and we can spawn something. Otherwise, check bullet Y
     
     LAB_CHECK_BULLET_Y:
         MOV     AX, 200                             ; screen height=200, so max y=200, so anything above this is free
         CMP     WORD [DI + C_BULLET_Y_OFFSET], AX   ; check if DI[i].yPos is above 200
-        JA      LAB_SPAWN_BULLET                    ; if so, this slot is free and we can spawn a bullet here. Otherwise, iterate (or end loop)
+        JAE     LAB_SPAWN_BULLET                    ; if so, this slot is free and we can spawn a bullet here. Otherwise, iterate (or end loop)
 
         ; ITERATE ;
         ADD     DI, C_BULLET_SIZE_BYTES             ; size of a bullet struct is 8 bytes, go on to next element of DAT_BULLET_ARRAY
@@ -873,29 +907,46 @@ FUNC_RENDER_SCREEN:
     ; DRAW PLAYER ;
     MOV     AX, WORD [DAT_PLAYER_POS_Y]     ; PARAM: DRAW Y
     MOV     DX, WORD [DAT_PLAYER_POS_X]     ; PARAM: DRAW X
-    MOV     SI, IMG_PLAYER_SPACESHIP        ; PARAM: IMAGE (RLE-encoded)
+    MOV     SI, IMG_PLAYER_SPACESHIP        ; PARAM: IMAGE (RL-encoded)
     CALL    FUNC_DRAW_IMAGE                 ; Draw spaceship
 
     ; DRAW ENEMIES ;
+    MOV     DI, DAT_ENEMY_ARRAY             ; LOOP THROUGH ENEMY ARRAY
+    LAB_DRAW_ENEMY_LOOP:
+        LAB_DRAW_CHECK_ENEMY_X:
+            CMP     WORD [DI + C_ENEMY_X_OFFSET], 320   ; Check if enemy X is valid (X < 320)
+            JAE     LAB_DRAW_ENEMY_CONTINUE             ; if X is bigger than or equal to 320, this bullet is invalid
 
+        LAB_DRAW_CHECK_ENEMY_Y:                 
+            CMP     WORD [DI + C_ENEMY_Y_OFFSET], 200   ; Check if enemy Y is valid (Y < 200)
+            JAE     LAB_DRAW_ENEMY_CONTINUE             ; if Y is bigger than or equal to 200, this bullet is invalid
+
+        LAB_DRAW_ENEMY:
+            MOV     AX, WORD [DI + C_ENEMY_Y_OFFSET]        ; PARAM: DRAW Y
+            MOV     DX, WORD [DI + C_ENEMY_X_OFFSET]        ; PARAM: DRAW X
+            MOV     SI, WORD [DI + C_ENEMY_IMAGE_OFFSET]    ; PARAM: IMAGE
+            CALL    FUNC_DRAW_IMAGE
+
+        LAB_DRAW_ENEMY_CONTINUE:
+            ADD     DI, C_ENEMY_SIZE_BYTES          ; iterate to next element of ENEMY ARRAY
+            CMP     DI, DAT_END_OF_ENEMY_ARRAY      ; if we're at the end of ENEMY ARRAY, terminate loop
+            JB      LAB_DRAW_ENEMY_LOOP             ; otherwise, continue looping
     
     ; DRAW BULLETS ;
     MOV     DI, DAT_BULLET_ARRAY            ; LOOP THROUGH BULLET ARRAY
     LAB_DRAW_BULLET_LOOP:
         LAB_DRAW_CHECK_BULLET_X:
-            MOV     AX, WORD [DI + C_BULLET_X_OFFSET]   ; Check if bullet X is valid (X <= 320)
-            CMP     AX, 320
-            JA      LAB_DRAW_BULLET_CONTINUE            ; if X is bigger than 320, this bullet is invalid
+            CMP     WORD [DI + C_BULLET_X_OFFSET], 320  ; Check if bullet X is valid (X < 320)
+            JAE     LAB_DRAW_BULLET_CONTINUE            ; if X is bigger than or equal to 320, this bullet is invalid
             
         LAB_DRAW_CHECK_BULLET_Y:
-            MOV     AX, WORD [DI + C_BULLET_Y_OFFSET]   ; check if bullet Y is valid (Y <= 200)
-            CMP     AX, 200
-            JA     LAB_DRAW_BULLET_CONTINUE             ; if Y is bigger than 200, this bullet is invalid
+            CMP     WORD [DI + C_BULLET_Y_OFFSET], 200  ; Check if bullet Y is valid (Y < 200)
+            JAE    LAB_DRAW_BULLET_CONTINUE             ; if Y is bigger than or equal to 200, this bullet is invalid
 
         LAB_DRAW_BULLET:
             MOV     AX, WORD [DI + C_BULLET_Y_OFFSET]       ; PARAM: DRAW Y
             MOV     DX, WORD [DI + C_BULLET_X_OFFSET]       ; PARAM: DRAW X
-            MOV     SI, WORD [DI + C_BULLET_IMAGE_OFFSET]   ; PARAM: IMAGE (RLE-encoded)
+            MOV     SI, WORD [DI + C_BULLET_IMAGE_OFFSET]   ; PARAM: IMAGE (RL-encoded)
             CALL    FUNC_DRAW_IMAGE
 
         LAB_DRAW_BULLET_CONTINUE:
@@ -912,3 +963,66 @@ FUNC_RENDER_SCREEN:
     POP     CX
     POP     AX
     RET
+
+
+;************************************************************************************************************************************************************
+; VOID CREATE_ENEMY(UINT16 YPOS, UINT16 XPOS, UINT16 FLAGS, NPTR IMAGE, UINT16 HEALTH, UINT8 SPEED, UINT8 DAMAGE, NPTR CODE, UINT8 FIRERATE)
+; creates an enemy at x, y with the passed stats. Automatically cleans up passed stack parameters.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; AX    : [UINT16]  YPOS    - the y position of the bullets's top left pixel
+; DX    : [UINT16]  XPOS    - the x position of the bullet's top left pixel
+; [BP+6]: [UINT16]  FLAGS   - controls certain behaviors of the enemy
+; BH    : [UINT8]   SPEED   - how much the position of the bullet is incremented by every frame
+; BL    : [UINT8]   DAMAGE  - how much damage the bullet does if it collides with something
+; SI    : [NPTR]    IMAGE   - the offset of the bullet's image from DS
+; [BP+4]: [NPTR]    CODE    - the function executed every frame by the enemy - VOID ENEMY_AI(ENEMY* ENEMY_PTR)
+; [BP+2]: [UINT8]   FIRERATE- how often, in frames (20 FPS), the enemy can fire
+;
+FUNC_CREATE_ENEMY:
+    ; SET UP STACK FRAME
+    PUSH    BP
+    MOV     BP, SP
+    PUSH    DI
+
+    ; LOOP THROUGH ENEMY ARRAY, FIND FIRST FREE SLOT (X >= 320 OR Y >= 200)
+    MOV     DI, DAT_ENEMY_ARRAY
+    LAB_CREATE_ENEMY_LOOP:
+        ; CHECK STRUCT X (CREATE ENEMY IF X >= 320)
+        CMP     WORD DS:[DI + C_ENEMY_X_OFFSET], 320    ; compare enemy.X to 320
+        JAE     LAB_CREATE_ENEMY                        ; if enemy.X >= 320, this slot is unused - create an enemy in this slot
+
+        ; CHECK STRUCT Y (CREATE ENEMY IF Y >= 200)
+        CMP     WORD DS:[DI + C_ENEMY_Y_OFFSET], 200    ; compare enemy.Y to 200
+        JAE     LAB_CREATE_ENEMY                        ; if enemy.Y >= 200, this slot is unused - create an enemy in this slot
+
+        LAB_CREATE_ENEMY_CONTINUE:
+        ADD     DI, C_ENEMY_SIZE_BYTES      ; iterate DI to the next enemy position
+        CMP     DI, DAT_END_OF_ENEMY_ARRAY  ; if iterator >= end of array, terminate loop
+        JAE     LAB_END_CREATE_ENEMY
+        JMP     LAB_CREATE_ENEMY_LOOP       ; if iterator < end of array, continue loop
+
+        LAB_CREATE_ENEMY:
+        MOV     WORD DS:[DI + C_ENEMY_X_OFFSET], DX         ; ENEMY X
+        MOV     WORD DS:[DI + C_ENEMY_Y_OFFSET], AX         ; ENEMY Y
+        MOV     AX, SS:[BP + 8]; load PARAM:FLAGS in AX
+        MOV     WORD DS:[DI + C_ENEMY_FLAGS_OFFSET], AX     ; ENEMY FLAGS
+        MOV     BYTE DS:[DI + C_ENEMY_SPEED_OFFSET], BH     ; ENEMY SPEED
+        MOV     BYTE DS:[DI + C_ENEMY_DAMAGE_OFFSET], BL    ; ENEMY DAMAGE
+        MOV     WORD DS:[DI + C_ENEMY_IMAGE_OFFSET], SI     ; ENEMY IMAGE
+        MOV     AX, SS:[BP + 6]; load PARAM:CODE in AX
+        MOV     WORD DS:[DI + C_ENEMY_CODE_OFFSET], AX      ; ENEMY CODE
+        MOV     AH, SS:[BP + 4]; load PARAM:FIRERATE in AH
+        MOV     BYTE DS:[DI + C_ENEMY_FIRERATE_OFFSET], AH  ; ENEMY FIRERATE
+        MOV     BYTE DS:[DI + C_ENEMY_ATTACK_FRAME_OFFSET], 0xFF    ; set enemy time since attack to be max (so it is reloaded upon creation)
+
+    LAB_END_CREATE_ENEMY:
+    POP     DI
+    ; COLLAPSE STACK FRAME
+    MOV     BX, SS:[BP + 2] ; load return address into BX
+    ADD     SP, 8           ; clear last 8 bytes of stack (4 push calls were made, including return address)
+    POP     BP              ; return original BP
+    JMP     BX              ; RET
+
+
+AI_ALIEN_SPITTER:
