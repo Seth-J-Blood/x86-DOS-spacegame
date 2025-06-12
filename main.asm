@@ -53,12 +53,12 @@ C_PLAYERDATA_MIN_POS_Y      EQU 20          ; 20 pixels of space for score displ
 C_PLAYERDATA_MAX_POS_Y      EQU (200 - C_PLAYERDATA_HEIGHT)
 C_PLAYERDATA_DODGE_FRAMES   EQU 5           ; how many frames the player's ship is invulnerable for when dodging
 C_PLAYERDATA_HIT_FRAMES     EQU 30          ; how many frames the player's ship is invulnerable for after being hit
-C_PLAYERDATA_MOVE_PIX       EQU 3           ; how many pixels per frame the ship moves when a movement key is held down (and ship is not boosting)
+C_PLAYERDATA_MOVE_PIX       EQU 2           ; how many pixels per frame the ship moves when a movement key is held down (and ship is not boosting)
 C_PLAYERDATA_MOVE_BOOST_PIX EQU 5           ; how many pixels per frame the ship moves when a movement key is held down (and ship is boosting)
 C_PLAYERDATA_BOOST_REFRESH  EQU 2           ; how much the boost refreshes every frame if not being used
 C_PLAYERDATA_BOOST_USAGE    EQU 5           ; how much boost gets used every frame while being used
 C_PLAYERDATA_MAX_BOOST      EQU 120
-C_PLAYERDATA_FIRERATE       EQU 5           ; how many frames in between player attacks. DO NOT MAKE MORE THAN 255
+C_PLAYERDATA_FIRERATE       EQU 1           ; how many frames in between player attacks. DO NOT MAKE MORE THAN 255
 C_PLAYERDATA_BULLET_X_OFF   EQU C_PLAYERDATA_WIDTH      ; how much to add to spawned bullets' x positions
 C_PLAYERDATA_BULLET_Y_OFF   EQU C_PLAYERDATA_HEIGHT - 2 ; how much to add to spawned bullets' y positions
 C_PLAYERDATA_BULLET_SPEED   EQU 6
@@ -102,7 +102,7 @@ C_ENEMY_FIRERATE_OFFSET     EQU 15      ; byte
 ;                                                                   ( .DATA SECTION )
 ;************************************************************************************************************************************************************
 section .data:
-    DAT_KEY_STATES      DB  0x00        ; [FLAGS8] contains key states. See C_FLAGs for flag bit offsets
+    DAT_KEY_STATES                      DB  0x00                    ; [FLAGS8] contains key states. See C_FLAGs for flag bit offsets
 
     DAT_PLAYER_FLAGS                    DB  0x00                    ; [FLAGS8] contains states about the player
     DAT_PLAYER_POS_X                    DW  150                     ; [UINT16] the x-position of the top-left pixel of the player
@@ -114,7 +114,7 @@ section .data:
     DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK DB  C_PLAYERDATA_FIRERATE   ; [UINT8] how many frames have passed since the user attacked last. Capped at 15
 
     DAT_DEBUG_PIXEL_X                   DW  0
-    DAT_LAST_FRAME_UPDATE               DB  0                       ; the microsecond timestamp of the last frame update that occurred.
+    DAT_LAST_FRAME_UPDATE               DB  0                       ; the centisecond timestamp of the last frame update that occurred.
 
     IMG_PLAYER_SPACESHIP                DB  4, 0x00, 2, 0x19, 0
                                         DB  1, 0x00, 3, 0x2A, 1, 0x36, 2, 0x19, 0
@@ -250,13 +250,13 @@ FUNC_INIT_GAME:
     MOV     BYTE [DAT_LAST_FRAME_UPDATE], DL
 
     ; TEST: CREATE ENEMY ;
-    MOV     AX, 50                  ; PARAM: Y POSITION
+    MOV     AX, 100                 ; PARAM: Y POSITION
     MOV     DX, 200                 ; PARAM: X POSITION
     PUSH    0x0000                  ; PARAM: FLAGS
-    MOV     BL, 3                   ; PARAM: SPEED
-    MOV     BH, 4                   ; PARAM: DAMAGE
+    MOV     BL, 3                   ; PARAM: DAMAGE
+    MOV     BH, 1                   ; PARAM: SPEED
     MOV     SI, IMG_ALIEN_SPITTER   ; PARAM: IMAGE (RL-encoded)
-    PUSH    FUNC_DEBUG_VGA          ; PARAM: AI CODE
+    PUSH    AI_ALIEN_SPITTER        ; PARAM: AI CODE
     PUSH    15                      ; PARAM: FIRERATE
     CALL    FUNC_CREATE_ENEMY
 
@@ -369,6 +369,29 @@ FUNC_LOGIC_STEP:
         BT      AX, C_FLAG_QUIT                             ; check if the game needs to quit
         JC      FUNC_QUIT_GAME                              ; if so, call QUIT_GAME()
 
+
+    ; ********************************** ;
+    ; HANDLE ENEMY MOVEMENT AND COLLISON ;
+    ; ********************************** ;
+    MOV     SI, DAT_ENEMY_ARRAY
+    LAB_TICK_ENEMY_LOOP:
+        ; CHECK IF ENEMY X IS VALID ;
+        CMP     WORD [SI + C_ENEMY_X_OFFSET], 320       ; if enemy.x >= 320, it is invalid and should not be dealt with.
+        JAE     LAB_CONTINUE_ENEMY_LOOP
+        
+        ; CHECK IF ENEMY Y IS VALID ;
+        CMP     WORD [SI + C_ENEMY_Y_OFFSET], 200       ; if enemy.y >= 200, it is invalid and should not be dealt with.
+        JAE     LAB_CONTINUE_ENEMY_LOOP
+    
+        ; **** TICK ENEMY AI **** ;
+        CALL    [SI + C_ENEMY_CODE_OFFSET]              ; call enemy AI
+
+        ; **** HANDLE COLLISIONS **** ;
+
+        LAB_CONTINUE_ENEMY_LOOP:
+            ADD     SI, C_ENEMY_SIZE_BYTES      ; increment iterator to point to the next enemy
+            CMP     SI, DAT_END_OF_ENEMY_ARRAY  ; if SI >= end of array, terminate loop
+            JNAE    LAB_TICK_ENEMY_LOOP
 
     ; *********************************** ;
     ; HANDLE BULLET MOVEMENT AND COLLISON ;
@@ -1025,4 +1048,120 @@ FUNC_CREATE_ENEMY:
     JMP     BX              ; RET
 
 
+;************************************************************************************************************************************************************
+; VOID CREATE_ENEMY(NPTR ME)
+; Should be called every frame. Makes the struct ME move and do stuff.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; SI : [NPTR]   ME      - a near pointer to the struct that needs to be updated
+;
 AI_ALIEN_SPITTER:
+    PUSH    AX
+    PUSH    BX  
+    PUSH    CX
+    PUSH    DX
+    PUSH    SI
+
+    ; UPDATE POSITION ;
+    ; for x, if spitter is not in front of player, make it move backwards (+x), otherwise, make it move to player (-x) until it is within 10 pixels of the player
+    MOVZX   CX, BYTE DS:[SI + C_ENEMY_SPEED_OFFSET]
+    LAB_MOVE_SPITTER_X:
+        MOV     AX, WORD DS:[SI + C_ENEMY_X_OFFSET] ; load me.X into AX
+        SUB     AX, C_PLAYERDATA_WIDTH              ; subtract player.width from me.X
+        CMP     AX, WORD DS:[DAT_PLAYER_POS_X]      ; if me.X - player.width > player.x, we are in front of player
+        JG      LAB_SPITTER_IN_FRONT_OF_PLAYER      ; signed comparison, me.X - player.width could go negative
+        JMP     LAB_SPITTER_MOVE_BACKWARDS          ; if we are not in front, try to move backwards
+
+        LAB_SPITTER_IN_FRONT_OF_PLAYER:
+        ; check if me.X - player.x >= 10. If it is not, then move closer.
+        SUB     AX, 10                              ; get me.X - 10
+        CMP     AX, WORD DS:[DAT_PLAYER_POS_X]      ; compare me.X - 10 to player.width, if we are not greater, then move forwards
+        JGE     LAB_SPITTER_MOVE_FORWARDS
+        JMP     LAB_MOVE_SPITTER_Y                  ; if we are fine on the x-axis, go on to Y axis
+
+        LAB_SPITTER_MOVE_FORWARDS:
+        SUB     WORD DS:[SI + C_ENEMY_X_OFFSET], CX     ; subtract speed from X axis
+        ; subtracting from our X could have caused an underflow! Check carry flag if this is the case
+        JNC     LAB_MOVE_SPITTER_Y                      ; if there was no underflow, continue logic flow
+        MOV     WORD DS:[SI + C_ENEMY_X_OFFSET], 0      ; if there was an underflow, set me.X to 0
+        JMP     LAB_MOVE_SPITTER_Y
+
+        LAB_SPITTER_MOVE_BACKWARDS:
+        ADD     WORD DS:[SI + C_ENEMY_X_OFFSET], CX     ; add speed to X axis
+        ; adding to our X could have made our X position greater than or equal to 320! Check if this is the case
+        CMP     WORD DS:[SI + C_ENEMY_X_OFFSET], 320     
+        JNGE    LAB_MOVE_SPITTER_Y                      ; if me.X is not greater than or equal to 320, continue logic flow
+        MOV     WORD DS:[SI + C_ENEMY_X_OFFSET], 319    ; if me.X is greater than or equal to 320, set me.X to 319
+        JMP     LAB_MOVE_SPITTER_Y  
+        
+
+    LAB_MOVE_SPITTER_Y:
+        ; rules: spitter always tries to match player y
+        MOV     AX, WORD DS:[SI + C_ENEMY_Y_OFFSET] ; load ME.Y into AX
+        SUB     AX, WORD DS:[DAT_PLAYER_POS_Y]      ; subtract PLAYER.Y from ME.Y
+        JZ      LAB_SPITTER_ATTEMPT_FIRE            ; if they are equal, the spitter will attempt to fire (obviously)
+
+        ; HANDLE MOVEMENT ;
+        JNS     LAB_NO_ABS                          ; if ME.Y - PLAYER.Y isn't negative, don't perform AX = abs(AX)
+        NEG     AX                                  ; otherwise, perform abs(AX)
+        CMP     AX, CX                              ; if |PLAYER.Y - ME.Y| < SPEED, just move PLAYER.Y - ME.Y distance down
+        JLE     LAB_ABS_MATCH_Y_LEVEL
+        ADD     WORD DS:[SI + C_ENEMY_Y_OFFSET], CX ; otherwise, subtract SPEED from ME.Y (move down SPEED distance)
+        JMP     LAB_SPITTER_ATTEMPT_FIRE            ; try to fire
+
+        LAB_ABS_MATCH_Y_LEVEL:
+        ADD     WORD DS:[SI + C_ENEMY_Y_OFFSET], AX ; match player Y level
+        JMP     LAB_SPITTER_ATTEMPT_FIRE
+
+        LAB_NO_ABS:
+        CMP     AX, CX                              ; if PLAYER.Y - ME.Y < SPEED, just move PLAYER.Y - ME.Y distance up
+        JL      LAB_NO_ABS_MATCH_Y_LEVEL
+        SUB     WORD DS:[SI + C_ENEMY_Y_OFFSET], CX ; otherwise, add SPEED to ME.Y (move up SPEED distance)
+        JMP     LAB_SPITTER_ATTEMPT_FIRE            ; try to fire
+
+        LAB_NO_ABS_MATCH_Y_LEVEL:
+        SUB     WORD DS:[SI + C_ENEMY_Y_OFFSET], AX ; match player Y level
+        JMP     LAB_SPITTER_ATTEMPT_FIRE
+
+    LAB_SPITTER_ATTEMPT_FIRE:
+    ; UPDATE TIMING VARIABLES ;
+    MOV     AL, BYTE DS:[SI + C_ENEMY_ATTACK_FRAME_OFFSET]  ; load # of frames since last shot into AL
+    MOV     AH, BYTE DS:[SI + C_ENEMY_FIRERATE_OFFSET]      ; load firerate into AH
+    CMP     AL, AH              ; if # of frames < firerate, increase frames
+    JAE     LAB_SPITTER_CHECK_X ; attempt to attack
+    INC     BYTE DS:[SI + C_ENEMY_ATTACK_FRAME_OFFSET]   ; otherwise, add one to frames and don't do anything
+    JMP     LAB_SPITTER_END_AI
+
+    ; CHECK X POSITION ;
+    LAB_SPITTER_CHECK_X:
+    MOV     AX, DS:[SI + C_ENEMY_X_OFFSET]          ; if ME.X - PLAYER.WIDTH > PLAYER.X, we are in front of them and may be able to shoot
+    SUB     AX, C_PLAYERDATA_WIDTH                  ; subtract PLAYER.WIDTH from ME.X
+    CMP     AX, DS:[DAT_PLAYER_POS_X]
+    JLE     LAB_SPITTER_END_AI                      ; signed compare, as ME.X - PLAYER.WIDTH could go negative. If ME.X - PLAYER.WIDTH <= PLAYER.X, don't shoot.
+
+    ; CHECK Y POSITION ;
+    MOV     AX, DS:[SI + C_ENEMY_Y_OFFSET]          ; if ME.Y - PLAYER.Y + PLAYER.HEIGHT/2 <= 32 and >= 0, we can shoot the player.
+    SUB     AX, DS:[DAT_PLAYER_POS_Y]               ; subtract PLAYER.Y from ME.Y
+    ADD     AX, C_PLAYERDATA_HEIGHT / 2             ; add PLAYER.HEIGHT/2 to ME.Y - PLAYER.Y
+    CMP     AX, 32
+    JNBE    LAB_SPITTER_END_AI                      ; unsigned compare, so a negative value is not less than 32. 
+
+    ; ATTACK ;
+    MOV     BYTE DS:[SI + C_ENEMY_ATTACK_FRAME_OFFSET], 0   ; RESET LAST FRAME SHOT
+    MOV     AX, DS:[SI + C_ENEMY_Y_OFFSET]          ; PARAM: Y
+    ADD     AX, 10
+    MOV     DX, DS:[SI + C_ENEMY_X_OFFSET]          ; PARAM: X
+    SUB     DX, 6
+    MOV     CX, (1 << C_BULLET_FLAG_HOSTILE) | (1 << C_BULLET_FLAG_MOVEMENT_NEG)  ; PARAM: FLAGS
+    MOV     BH, 5                                   ; PARAM: SPEED
+    MOV     BL, 5                                   ; PARAM: DAMAGE
+    MOV     SI, IMG_PLAYER_BULLET                   ; PARAM: IMAGE
+    CALL    FUNC_CREATE_BULLET
+
+    LAB_SPITTER_END_AI:
+    POP     SI
+    POP     DX
+    POP     CX
+    POP     BX
+    POP     AX
+    RET
