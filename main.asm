@@ -126,6 +126,14 @@ section .data:
                                         DB  4, 0x00, 7, 0x19, 2, 0x14, 2, 0x19, 0
                                         DB  5, 0x00, 1, 0x36, 8, 0x19, 0, 0
 
+    IMG_PLAYER_DEAD                     DB 8, 0x00, 1, 0x2A, 0
+                                        DB 4, 0x00, 1, 0x19, 3, 0x00, 2, 0x2A, 1, 0x00, 1, 0x2A, 0
+                                        DB 4, 0x00, 1, 0x36, 2, 0x19, 1, 0x2A, 1, 0x2B, 2, 0x2A, 1, 0x2B, 0
+                                        DB 5, 0x00, 2, 0x19, 1, 0x2A, 1, 0x2B, 1, 0x2A, 2, 0x2B, 1, 0x2A, 1, 0x00, 1, 0x2A, 0
+                                        DB 4, 0x00, 1, 0x36, 1, 0x19, 1, 0x2B, 3, 0x1A, 1, 0x19, 1, 0x2B, 1, 0x2A, 1, 0x2B, 1, 0x2A, 0
+                                        DB 5, 0x00, 5, 0x19, 1, 0x2B, 2, 0x14, 1, 0x2B, 1, 0x19, 0
+                                        DB 7, 0x00, 5, 0x19, 0, 0
+
     IMG_PLAYER_BULLET                   DB  3, 0x44, 0, 0
 
     IMG_SCORE_TEXT                      DB  1, 0x00, 3, 0x2C, 3, 0x00, 3, 0x2C, 3, 0x00, 3, 0x2C, 3, 0x00, 4, 0x2C, 3, 0x00, 4, 0x2C, 0
@@ -170,6 +178,12 @@ section .data:
                                         DB 2, 0x23, 2, 0x00, 1, 0x22, 2, 0x0F, 1, 0x22, 1, 0x23, 1, 0x22, 3, 0x23, 0
                                         DB 1, 0x00, 1, 0x22, 1, 0x00, 6, 0x22, 2, 0x23, 0
                                         DB 2, 0x00, 1, 0x22, 2, 0x00, 3, 0x22, 0, 0
+
+    IMG_NUMBERMAP                       DB 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+                                        DB 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF
+                                        DB 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+                                        DB 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF
+                                        DB 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 
     DAT_BULLET_ARRAY                    TIMES C_BULLET_MAX_BULLETS * (C_BULLET_SIZE_BYTES / 2) DW 0xFFFF    ; 0xFFFF (above 320/200) for pos data means free slot
     DAT_END_OF_BULLET_ARRAY:
@@ -257,6 +271,18 @@ FUNC_INIT_GAME:
     MOV     SI, IMG_HEALTH_TEXT ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF            ; PARAM: BITMASK
     CALL    FUNC_DRAW_IMAGE
+
+    MOV     AX, 4
+    MOV     DX, 72
+    MOV     BL, 0x2C
+    MOV     CX, 0
+    CALL    FUNC_DISPLAY_DEC_NUMBER
+
+    ;MOV     AX, 4
+    ;MOV     DX, 72
+    ;MOV     BL, 0x2C
+    ;MOV     BH, 5
+    ;CALL FUNC_DISPLAY_DEC_DIGIT
 
     ; DRAW HEALTH BAR BACKGROUND ONTO SCREEN ;
     MOV     AX, 14                  ; PARAM: Y POSITION
@@ -1321,4 +1347,138 @@ AI_ALIEN_SPITTER:
     POP     CX
     POP     BX
     POP     AX
+    RET
+
+FUNC_KILL_PLAYER:
+
+
+;************************************************************************************************************************************************************
+; VOID DISPLAY_DEC_NUMBER(UINT16 NUM, UINT16 X, UINT16 Y, UINT8 COLOR)
+; Displays a decimal number to the screen at (x, y), given an unsigned int16, with the passed color.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; CX : [UINT16] NUM     - the unsigned 16-bit number to be displayed to the screen
+; DX : [UINT16] X       - the x-position of the top left corner of the first digit
+; AX : [UINT16] Y       - the y-position of the top left corner of the first digit
+; BL : [UINT8]  COLOR   - the VGA-pallete color that the number should be displayed in
+;
+FUNC_DISPLAY_DEC_NUMBER:
+    PUSH    AX
+    PUSH    DX
+    PUSH    SI
+    PUSH    0x0000          ; local variable, used to keep track of division results after FUNC_DISPLAY_DEC_DIGIT calls
+
+    MOV     BH, 0           ; clear BH, we will be using it for flags and parameters
+    MOV     AX, CX          ; use AX as y-param for consistency, but we're just gonna slap number into AX anyways
+    MOV     SI, SP          ; load SP into SI because for some dumb reason SP cannot be used for addressing
+    MOV     CX, 10000       ; biggest multiple of 10 that we can store in a uint16 is 10k, start by dividing by that
+
+    LAB_DISPLAY_DIGIT_LOOP:
+        DIV     CX              ; AX : result, DX : remainder
+        MOV     WORD SS:[SI], DX; save remainer in local variable
+        TEST    AX, AX          ; if result = 0, don't print anything. Otherwise, print out a digit (and increase x-position)
+        JNZ     LAB_PRINT_DIGIT
+        TEST    BH, BH          ; if BH is not zero, that means something has already been printed (so print our digit anyways)
+        JNZ     LAB_PRINT_DIGIT
+        TEST    CX, 0x0001      ; check our divisor. If divisor is equal to one, that means we must print the last digit even if it is zero (so a value of 0 is printed)
+        JNZ     LAB_PRINT_DIGIT
+        ; otherwise, divide CX by 10 and loop
+
+    LAB_CONTINUE_DIGIT_LOOP:
+        MOV     AX, CX          ; \
+        MOV     CX, 10          ;  | divide divisor by 10
+        DIV     CX              ; /
+        MOV     CX, AX          ; load result back into CX
+        MOV     AX, WORD SS:[SI]; get old remainder from last division, load into AX
+        TEST    CX, CX          ; if divisor is zero, terminate display loop
+        JZ      LAB_END_PRINT_DIGIT
+        JMP     LAB_DISPLAY_DIGIT_LOOP
+
+    LAB_PRINT_DIGIT:
+        CALL FUNC_DEBUG_VGA
+        MOV     BH, AL                  ; PARAM : NUM
+                                        ; PARAM : BITMASK ALREADY PASSED ;
+        MOV     AX, WORD SS:[SI + 6]    ; PARAM : Y
+        MOV     DX, WORD SS:[SI + 4]    ; PARAM : X
+        CALL    FUNC_DISPLAY_DEC_DIGIT
+        ADD     WORD SS:[SI + 4], 10    ; increase next digit X-position by 5, 2 pixels of padding between digits
+        MOV     BH, 1                   ; make sure program knows to print next digit even if it is zero
+        JMP     LAB_CONTINUE_DIGIT_LOOP
+
+    LAB_END_PRINT_DIGIT:
+    ADD     SP, 2       ; delete local variable
+    POP     SI
+    POP     DX          ; this value is garbage, but whatever, just send it back to DX
+    POP     AX
+    RET
+
+;************************************************************************************************************************************************************
+; VOID DISPLAY_DEC_DIGIT(UINT8 NUM, UINT8 BITMASK, UINT16 X, UINT16 Y)
+; Displays a singular decimal digit to the screen, with top left coordinates (X, Y), and bitmask BITMASK. NUM should not be more than 9.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; BH : [UINT8]  NUM     - the digit to be displayed (max value 9)
+; BL : [UINT8]  BITMASK - the bitmask to be applied to the digit color (color = 0xFF)
+; DX : [UINT16] X       - the x-position of the top left corner of the digit
+; AX : [UINT16] Y       - the y-position of the top left corner of the digit
+;
+FUNC_DISPLAY_DEC_DIGIT:
+    ; we want to preserve passed parameters
+    PUSH    DX
+    PUSH    AX
+    PUSH    ES
+    PUSH    DI
+    PUSH    BX
+
+    ; GET 1D INDEX FROM 2D COORDINATE ;
+    MOV     DX, 320             ; load 320 into DX, which is the number of pixels in one row of VGA 
+    MUL     DX                  ; multiply Y-coord by 320. This clears DX.
+    MOV     DI, SP              ; get address of DX value
+    ADD     AX, WORD SS:[DI + 8]; get DX's original value and add it to AX.
+    MOV     DI, AX              ; load index into DI
+    MOV     DX, 0xA000          ; load VGA segment into DX, because for some dumb reason ES can't be assigned constants
+    MOV     ES, DX              ; VGA segment
+
+    ; GET DIGIT X-INDEX ;
+    MOV     AL, BH              ; move digit into AL
+    MOV     DL, 3               ; multiply num by three (x-size of one digit)
+    MUL     DL                  ; this clears AH, AL = pixel offset of digit image
+
+    MOV     DX, BX              ; save param value into DX to free up BX for addressing
+    MOVZX   BX, AL              ; load offset into BX (I hate this shit)
+
+    ; START DRAWING ;
+    LAB_DRAW_DIGIT_ROW:
+    MOV     AL, BYTE DS:[IMG_NUMBERMAP + BX]    ; load pixel value into AL
+    AND     AL, DL                              ; apply bitmask to DL
+    MOV     BYTE ES:[DI], AL                    ; draw pixel 1 of 4 into memory
+    MOV     BYTE ES:[DI + 1], AL                ; draw pixel 2 of 4 into memory
+    MOV     BYTE ES:[DI + 320], AL              ; draw pixel 3 of 4 into memory
+    MOV     BYTE ES:[DI + 321], AL              ; draw pixel 4 of 4 into memory
+
+    MOV     AL, BYTE DS:[IMG_NUMBERMAP + 1 + BX]; load pixel value into Al
+    AND     AL, DL                              ; apply bitmask to AL
+    MOV     BYTE ES:[DI + 2], AL                ; draw pixel 1 of 4 into memory
+    MOV     BYTE ES:[DI + 3], AL                ; draw pixel 2 of 4 into memory
+    MOV     BYTE ES:[DI + 322], AL              ; draw pixel 3 of 4 into memory
+    MOV     BYTE ES:[DI + 323], AL              ; draw pixel 4 of 4 into memory
+
+    MOV     AL, BYTE DS:[IMG_NUMBERMAP + 2 + BX]; load pixel value into Al
+    AND     AL, DL                              ; apply bitmask to AL
+    MOV     BYTE ES:[DI + 4], AL                ; draw pixel 1 of 4 into memory
+    MOV     BYTE ES:[DI + 5], AL                ; draw pixel 2 of 4 into memory
+    MOV     BYTE ES:[DI + 324], AL              ; draw pixel 3 of 4 into memory
+    MOV     BYTE ES:[DI + 325], AL              ; draw pixel 4 of 4 into memory
+
+    ; DRAW NEXT ROW ;
+    ADD     DI, 640                             ; go down 2 pixels on screen
+    ADD     BX, 30                              ; go to next row of image
+    CMP     BX, 150                             ; if AL >= 150 after drawing (meaning we have passed bottom row of numbermap), terminate draw loop
+    JNAE    LAB_DRAW_DIGIT_ROW                  ; otherwise, continue loop
+
+    POP     BX
+    POP     DI
+    POP     ES
+    POP     AX
+    POP     DX
     RET
