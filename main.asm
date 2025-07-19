@@ -42,9 +42,16 @@ C_FLAG_QUIT             EQU 7
 
 C_ANY_MOVEMENT_FLAG     EQU 0b00001111
 
+C_FLAG_VGA_RETRACE      EQU 3       ; bit three of port 0x3DA indicates whether a vertical retrace is occurring
+
 ;************************************************************************************************************************************************************
 ;                                                                       ( CONSTANTS )
 ;************************************************************************************************************************************************************
+; MISC CONSTANTS ;
+C_VRETRACE_PORT             EQU 0x3DA  
+C_HURT_FLASH_DURATION       EQU 1           ; how many frames a flash effect is displayed for when an entity takes damage
+
+; PLAYER CONSTANTS ;
 C_PLAYERDATA_WIDTH          EQU 32          ; player spaceship image is 32x12
 C_PLAYERDATA_HEIGHT         EQU 12
 C_PLAYERDATA_MIN_POS_X      EQU C_PLAYERDATA_MOVE_BOOST_PIX ; Do NOT set lower than C_PLAYERDATA_MOVE_BOOST_PIX or goofy shit happens
@@ -57,17 +64,18 @@ C_PLAYERDATA_MOVE_PIX       EQU 2           ; how many pixels per frame the ship
 C_PLAYERDATA_MOVE_BOOST_PIX EQU 5           ; how many pixels per frame the ship moves when a movement key is held down (and ship is boosting)
 C_PLAYERDATA_BOOST_REFRESH  EQU 2           ; how much the boost refreshes every frame if not being used
 C_PLAYERDATA_BOOST_USAGE    EQU 5           ; how much boost gets used every frame while being used
-C_PLAYERDATA_MAX_BOOST      EQU 120
-C_PLAYERDATA_FIRERATE       EQU 5           ; how many frames in between player attacks. DO NOT MAKE MORE THAN 255
+C_PLAYERDATA_MAX_BOOST      EQU 300
+C_PLAYERDATA_FIRERATE       EQU 10           ; how many frames in between player attacks. DO NOT MAKE MORE THAN 255
 C_PLAYERDATA_BULLET_X_OFF   EQU C_PLAYERDATA_WIDTH      ; how much to add to spawned bullets' x positions
 C_PLAYERDATA_BULLET_Y_OFF   EQU C_PLAYERDATA_HEIGHT - 2 ; how much to add to spawned bullets' y positions
 C_PLAYERDATA_BULLET_SPEED   EQU 6
 C_PLAYERDATA_BULLET_DAMAGE  EQU 3
 C_PLAYERDATA_MAX_HEALTH     EQU 500
+C_PLAYERDATA_INVULN_FRAMES  EQU 30          ; for how many frames the player is invulnerable after taking damage
 
 ; PLAYER FLAGS ;
-C_PLAYERFLAG_HAS_RELEASED_DODGE EQU 0       ; whether or not the player has released the dodge button since their last dodge (to prevent holding down the dodge button)
-
+C_PLAYERFLAG_HAS_RELEASED_DODGE         EQU 0       ; whether or not the player has released the dodge button since their last dodge (to prevent holding down the dodge button)
+C_PLAYERFLAG_WAS_DAMAGED_LAST_FRAME     EQU 1       ; name explains it all lol
 
 ; BULLET CONSTANTS ;
 C_BULLET_MAX_BULLETS        EQU 30
@@ -87,24 +95,26 @@ C_BULLET_FLAG_HOSTILE       EQU 2       ; if true, the bullet will damage the pl
 
 ; ENEMY CONSTANTS ;
 C_ENEMY_MAX_ENEMIES         EQU 15
-C_ENEMY_SIZE_BYTES          EQU 18
+C_ENEMY_SIZE_BYTES          EQU 20
 C_ENEMY_X_OFFSET            EQU 0       ; word
 C_ENEMY_Y_OFFSET            EQU 2       ; word
-C_ENEMY_FLAGS_OFFSET        EQU 4       ; word
+C_ENEMY_HURT_FRAMES_OFFSET  EQU 4       ; byte
+C_ENEMY_FLAGS_OFFSET        EQU 5       ; byte
 C_ENEMY_IMAGE_OFFSET        EQU 6       ; word
 C_ENEMY_HEALTH_OFFSET       EQU 8       ; word
 C_ENEMY_SPEED_OFFSET        EQU 10      ; byte
 C_ENEMY_DAMAGE_OFFSET       EQU 11      ; byte
 C_ENEMY_CODE_OFFSET         EQU 12      ; word
-C_ENEMY_ATTACK_FRAME_OFFSET EQU 14      ; byte
-C_ENEMY_FIRERATE_OFFSET     EQU 15      ; byte
-C_ENEMY_IMAGE_WIDTH_OFFSET  EQU 16      ; byte
-C_ENEMY_IMAGE_HEIGHT_OFFSET EQU 17      ; byte
+C_ENEMY_SCORE_WORTH_OFFSET  EQU 14      ; word
+C_ENEMY_ATTACK_FRAME_OFFSET EQU 16      ; byte
+C_ENEMY_FIRERATE_OFFSET     EQU 17      ; byte
+C_ENEMY_IMAGE_WIDTH_OFFSET  EQU 18      ; byte
+C_ENEMY_IMAGE_HEIGHT_OFFSET EQU 19      ; byte
+
 
 ;************************************************************************************************************************************************************
 ;                                                                   ( .DATA SECTION )
 ;************************************************************************************************************************************************************
-section .data:
     DAT_KEY_STATES                      DB  0x00                    ; [FLAGS8] contains key states. See C_FLAGs for flag bit offsets
 
     DAT_PLAYER_FLAGS                    DB  0x00                    ; [FLAGS8] contains states about the player
@@ -113,11 +123,12 @@ section .data:
     DAT_PLAYER_HEALTH                   DW  C_PLAYERDATA_MAX_HEALTH ; [UINT16] the current health of the player. If this reaches zero, the player dies
     DAT_PLAYER_SCORE                    DW  0                       ; [UINT16] the current score of the player
     DAT_PLAYER_BOOST_REMAINING          DW  C_PLAYERDATA_MAX_BOOST  ; [UINT16] how much boost the player has left. Every frame unused, boost goes up 1. Every frame used, boost goes down 5.
-    DAT_PLAYER_DODGE_FRAMES_REMAINING   DB  0                       ; [UINT8] how many frames of invulnerability the player has remaining. FPS = 20
-    DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK DB  C_PLAYERDATA_FIRERATE   ; [UINT8] how many frames have passed since the user attacked last. Capped at 15
+    DAT_PLAYER_DODGE_FRAMES_REMAINING   DB  0                       ; [UINT8] how many frames of invulnerability the player has remaining. FPS = 30
+    DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK DB  C_PLAYERDATA_FIRERATE   ; [UINT8] how many frames have passed since the user attacked last. Capped at FIRERATE.
+    DAT_PLAYER_FRAMES_SINCE_LAST_HURT   DB  0xF0                    ; [UINT8] how many frames have passed since the user got hit last. Capped at INVULN_FRAMES.
+                                        DB  0                       ; (placeholder for aligning data)
 
     DAT_DEBUG_PIXEL_X                   DW  0
-    DAT_LAST_FRAME_UPDATE               DB  0                       ; the centisecond timestamp of the last frame update that occurred.
 
     IMG_PLAYER_SPACESHIP                DB  4, 0x00, 2, 0x19, 0
                                         DB  1, 0x00, 3, 0x2A, 1, 0x36, 2, 0x19, 0
@@ -179,6 +190,14 @@ section .data:
                                         DB 1, 0x00, 1, 0x22, 1, 0x00, 6, 0x22, 2, 0x23, 0
                                         DB 2, 0x00, 1, 0x22, 2, 0x00, 3, 0x22, 0, 0
 
+                                        DB 20, 10   ; width, height
+    IMG_ALIEN_CHARGER                   DB 1, 0x06, 1, 0x22, 1, 0x00, 3, 0x22, 0
+                                        DB 2, 0x00, 1, 0x22, 3, 0x23, 1, 0x22, 0
+                                        DB 1, 0x00, 1, 0x06, 2, 0x22, 1, 0x08, 1, 0x0F, 1, 0x23, 2, 0x22, 2, 0x06, 0
+                                        DB 2, 0x00, 1, 0x22, 3, 0x23, 1, 0x22, 0
+                                        DB 1, 0x06, 1, 0x22, 1, 0x00, 3, 0x22, 0
+
+
     IMG_NUMBERMAP                       DB 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
                                         DB 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF
                                         DB 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
@@ -194,11 +213,21 @@ section .data:
     STR_QUIT_MSG                        DB  'Shutdown was initiated! Error code: ?', 0x0A, 0x0D, '$'
     STR_DEBUG_MSG                       DB  '!DEBUG!', 0x0A, 0x0D, '$'
 
+    ALL_ENEMY_STATS:
+    STRUCT_ENEMY_SPITTER:
+        DW  150                 ; SCORE WORTH
+        DW  35                  ; HEALTH
+        DB  0                   ; FLAGS
+        DB  15                  ; FIRERATE
+        DW  IMG_ALIEN_SPITTER   ; IMAGE
+        DB  1                   ; SPEED
+        DB  3                   ; DAMAGE
+        DW  AI_ALIEN_SPITTER    ; CODE
+
 
 ;************************************************************************************************************************************************************
 ;                                                               ( UNINITIALIZED DATA SECTION )
 ;************************************************************************************************************************************************************
-section .bss:
     PTR_OLD_KEYHANDLER_ADDRESS          RESW    2       ; [LPTR] contains the memory address of the original IVT keyhandler interrupt
     
 ;************************************************************************************************************************************************************
@@ -218,7 +247,7 @@ FUNC_INIT_GAME:
     CLI ; disable interrupts while changing an interupt
 
     ; SAVE ORIGINAL KEY HANDLER INTERRUPT ADDRESS IN PTR_OLD_KEYHANDLER_ADDRESS ;
-    MOV AX, 0x0000
+    XOR AX, AX              ; IVT segment
     MOV ES, AX              ; load segment 0x0000 into ES (have to use a register [AX] as median), which is the segment of the IVT in BIOS memory
 
     MOV AX, 0x0024  
@@ -249,6 +278,7 @@ FUNC_INIT_GAME:
     MOV     DX, 2               ; PARAM: X POSITION
     MOV     SI, IMG_SCORE_TEXT  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF            ; PARAM: BITMASK
+    XOR     BH, BH              ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
 
     ; DRAW TEXT: "BOOST:" ONTO SCREEN ;
@@ -256,6 +286,7 @@ FUNC_INIT_GAME:
     MOV     DX, 260             ; PARAM: X POSITION
     MOV     SI, IMG_BOOST_TEXT  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF            ; PARAM: BITMASK
+    XOR     BH, BH              ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
 
     ; DRAW BOOST BAR BACKGROUND ONTO SCREEN ;
@@ -263,6 +294,7 @@ FUNC_INIT_GAME:
     MOV     DX, 260                 ; PARAM: X POSITION
     MOV     SI, IMG_BOOST_OUTLINE   ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
+    XOR     BH, BH                  ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
 
     ; DRAW TEXT: "HEALTH:" ONTO SCREEN ;
@@ -270,12 +302,13 @@ FUNC_INIT_GAME:
     MOV     DX, 200             ; PARAM: X POSITION
     MOV     SI, IMG_HEALTH_TEXT ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF            ; PARAM: BITMASK
+    XOR     BH, BH              ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
 
     MOV     AX, 4
     MOV     DX, 72
     MOV     BL, 0x2C
-    MOV     CX, 12345
+    XOR     CX, CX
     CALL    FUNC_DISPLAY_DEC_NUMBER
 
     ; DRAW HEALTH BAR BACKGROUND ONTO SCREEN ;
@@ -283,24 +316,19 @@ FUNC_INIT_GAME:
     MOV     DX, 200                 ; PARAM: X POSITION
     MOV     SI, IMG_BOOST_OUTLINE   ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
+    XOR     BH, BH                  ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
-
-    ; SAVE START TIMESTAMP INTO DAT_LAST_FRAME_UPDATE ;
-    MOV     AH, 0x2C        ; INT 0x21 | AH 0x2C: GET SYSTEM TIME. CH = HOUR, CL = MIN, DH = SEC, DL = CENTISECONDS
-    INT     0x21
-
-    MOV     BYTE [DAT_LAST_FRAME_UPDATE], DL
 
     ; TEST: CREATE ENEMY ;
     MOV     AX, 50                  ; PARAM: Y POSITION
     MOV     DX, 200                 ; PARAM: X POSITION
-    PUSH    50                      ; PARAM: HEALTH
-    PUSH    0x0000                  ; PARAM: FLAGS
+    MOV     CX, 150                 ; PARAM: SCORE
+    PUSH    35                      ; PARAM: HEALTH
     MOV     BL, 3                   ; PARAM: DAMAGE
     MOV     BH, 1                   ; PARAM: SPEED
     MOV     SI, IMG_ALIEN_SPITTER   ; PARAM: IMAGE (RL-encoded)
     PUSH    AI_ALIEN_SPITTER        ; PARAM: AI CODE
-    PUSH    15                      ; PARAM: FIRERATE
+    PUSH    0x00 | (60 << 8)        ; PARAM: FLAGS + FIRERATE
     CALL    FUNC_CREATE_ENEMY
 
     ; START MAIN LOOP ;
@@ -309,7 +337,7 @@ FUNC_INIT_GAME:
 
 ;************************************************************************************************************************************************************
 ; VOID LOGIC_STEP()
-; handles all key flags and updates all entities according to the game's current state. Should be called once a frame, at 20 FPS.
+; handles all key flags and updates all entities according to the game's current state. Should be called once a frame, at 30 FPS.
 ;************************************************************************************************************************************************************
 ; ( PARAMS )
 ; NONE
@@ -317,7 +345,7 @@ FUNC_INIT_GAME:
 FUNC_LOGIC_STEP:
     ; CHECK PLAYER KEY STATES AND UPDATE PLAYER STATS BASED ON THEM ;
 
-    MOV     BL, 0x00    ; PARAM: BITMASK
+    XOR     BL, BL      ; PARAM: BITMASK
     CALL    FUNC_RENDER_SCREEN
 
     ; HANDLE KEYBOARD INPUT FROM THE USER ;
@@ -336,6 +364,7 @@ FUNC_LOGIC_STEP:
         JMP     LAB_CHECK_PLAYER_MOVES_UP                   ; continue checking for player states
 
         LAB_INC_BOOST:
+        BTR     WORD DS:[DAT_KEY_STATES], C_FLAG_BOOST      ; turn off boost hold flag, even if the player is holding it
         CMP     WORD [DAT_PLAYER_BOOST_REMAINING], C_PLAYERDATA_MAX_BOOST       ; if the boost has reached max, skip adding boost
         JNB     LAB_CHECK_PLAYER_MOVES_UP
         ADD     WORD [DAT_PLAYER_BOOST_REMAINING], C_PLAYERDATA_BOOST_REFRESH   ; add refresh boost amount to player's remaining boost
@@ -390,7 +419,7 @@ FUNC_LOGIC_STEP:
         JNC     LAB_CHECK_GAME_QUIT                         ; if the player does not need to attack, check if the game needs to quit
 
         ; SPAWN BULLET ;
-        MOV     BH, 0                                       ; set frames since last attack to 15
+        XOR     BH, BH                                      ; set frames since last attack to 15
         MOV     BYTE [DAT_PLAYER_FRAMES_SINCE_LAST_ATTACK], BH  
 
         MOV     AX, WORD [DAT_PLAYER_POS_Y]                 ; PARAM: DRAW Y
@@ -398,7 +427,7 @@ FUNC_LOGIC_STEP:
         MOV     DX, WORD [DAT_PLAYER_POS_X]                 ; PARAM: DRAW X
         ADD     DX, C_PLAYERDATA_BULLET_X_OFF                   ; PARAM: ADD X OFFSET TO BULLET X
         MOV     SI, IMG_PLAYER_BULLET                       ; PARAM: IMAGE (RL-encoded)
-        MOV     CX, 0                                       ; PARAM: FLAGS
+        XOR     CX, CX                                      ; PARAM: FLAGS
         MOV     BH, C_PLAYERDATA_BULLET_SPEED               ; PARAM: BULLET SPEED
         MOV     BL, C_PLAYERDATA_BULLET_DAMAGE              ; PARAM: BULLET DAMAGE
         CALL    FUNC_CREATE_BULLET
@@ -414,8 +443,13 @@ FUNC_LOGIC_STEP:
 
     ; ********************************** ;
     ; HANDLE ENEMY MOVEMENT AND COLLISON ;
-    ; ********************************** ;
+    ; ********************************** ;  
     MOV     SI, DAT_ENEMY_ARRAY
+    ; HANDLE PLAYER HURT STATUS ;
+    CMP     BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT], C_PLAYERDATA_INVULN_FRAMES  ; don't tick hurt frames past C_PLAYERDATA_INVULN_FRAMES + 1
+    JA      LAB_TICK_ENEMY_LOOP
+    INC     BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT]
+
     LAB_TICK_ENEMY_LOOP:
         ; CHECK IF ENEMY X IS VALID ;
         CMP     WORD DS:[SI + C_ENEMY_X_OFFSET], 320    ; if enemy.x >= 320, it is invalid and should not be dealt with.
@@ -429,7 +463,17 @@ FUNC_LOGIC_STEP:
         MOV     BX, WORD CS:[SI + C_ENEMY_CODE_OFFSET]
         CALL    BX
 
+        ; **** TICK ENEMY HURT FRAMES **** ;
+        CMP     BYTE DS:[SI + C_ENEMY_HURT_FRAMES_OFFSET], C_HURT_FLASH_DURATION
+        JA      LAB_NO_ENEMY_HURT_TICK                  ; if enemy.hurtFrames >= C_HURT_FLASH_DURATION, do not increment frames.
+        INC     BYTE DS:[SI + C_ENEMY_HURT_FRAMES_OFFSET]
+
+        LAB_NO_ENEMY_HURT_TICK:
         ; **** HANDLE COLLISIONS **** ;
+        ; CHECK PLAYER INVULNERABILITY STATUS ;
+        CMP     BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT], C_PLAYERDATA_INVULN_FRAMES
+        JNA     LAB_CONTINUE_ENEMY_LOOP                ; 
+
         ; CHECK ENEMY X - if enemy.X - player.X >= 0 && enemy.X - player.X < player.width
         MOV     AX, WORD DS:[SI + C_ENEMY_X_OFFSET]     ; load enemy X into AX
         SUB     AX, WORD DS:[DAT_PLAYER_POS_X]          ; perform enemy.X - player.X
@@ -447,6 +491,9 @@ FUNC_LOGIC_STEP:
         ; ENEMY IS COLLIDING, DEAL enemy.health DAMAGE TO player.health ;
         MOV     AX, WORD DS:[SI + C_ENEMY_HEALTH_OFFSET]
         SUB     WORD DS:[DAT_PLAYER_HEALTH], AX
+        MOV     AX, WORD DS:[SI + C_ENEMY_SCORE_WORTH_OFFSET]
+        MOV     BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT], 0
+        ADD     WORD DS:[DAT_PLAYER_SCORE], AX          ; add enemy score worth to player score
         MOV     WORD DS:[SI + C_ENEMY_X_OFFSET], 0xFFFF ; kill enemy, it collided
 
         LAB_CONTINUE_ENEMY_LOOP:
@@ -464,7 +511,7 @@ FUNC_LOGIC_STEP:
         JA      LAB_CONTINUE_BULLET_LOOP
 
         ; CHECK IF BULLET Y IS VALID ;
-        CMP     WORD [SI + C_BULLET_Y_OFFSET], 200     ; if bullet.y > 200, it is invalid and should not be dealth with.
+        CMP     WORD [SI + C_BULLET_Y_OFFSET], 200     ; if bullet.y > 200, it is invalid and should not be dealt with.
         JA      LAB_CONTINUE_BULLET_LOOP
 
         ; ****** UPDATE BULLET ****** ;
@@ -529,8 +576,11 @@ FUNC_LOGIC_STEP:
                 MOV     WORD DS:[SI + C_BULLET_X_OFFSET], 0xFFFF    ; invalidate bullet
                 MOVZX   CX, BYTE DS:[SI + C_BULLET_DAMAGE_OFFSET]   ; load damage into CX
                 SUB     WORD DS:[DI + C_ENEMY_HEALTH_OFFSET], CX    ; damage enemy
+                MOV     BYTE DS:[DI + C_ENEMY_HURT_FRAMES_OFFSET], 0; set enemy hurt frames to zero
                 CMP     WORD DS:[DI + C_ENEMY_HEALTH_OFFSET], 0     ; if health is lower than or equal to 0, delete enemy
                 JG      LAB_CONTINUE_BULLET_LOOP                    
+                MOV     CX, WORD DS:[DI + C_ENEMY_SCORE_WORTH_OFFSET]
+                ADD     WORD DS:[DAT_PLAYER_SCORE], CX              ; add enemy score worth to player score
                 MOV     WORD DS:[DI + C_ENEMY_X_OFFSET], 0xFFFF     ; invalidate enemy
                 JMP     LAB_CONTINUE_BULLET_LOOP                    ; this bullet is dead, continue outer loop
 
@@ -540,8 +590,11 @@ FUNC_LOGIC_STEP:
                     JAE     LAB_CONTINUE_BULLET_LOOP
                     JMP     LAB_COLLIDE_ENEMY_LOOP          ; otherwise, continue outer loop
 
-
         LAB_COLLIDE_HOSTILE_BULLET:
+            ; CHECK PLAYER INVULNERABILITY STATUS ;
+            CMP     BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT], C_PLAYERDATA_INVULN_FRAMES  
+            JNA     LAB_CONTINUE_BULLET_LOOP                ; if player is still invulnerable (frames since last hurt < INVULN_FRAMES), don't even bother with collisions.
+
             ; CHECK BULLET Y ;
             ; if(bullet.y - player.y >= 0 && bullet.y - player.y <= player.height), check X axis
             MOV     CX, WORD DS:[SI + C_BULLET_Y_OFFSET]    ; load bullet.Y into CX
@@ -558,6 +611,7 @@ FUNC_LOGIC_STEP:
 
             ; COLLIDE! ;
             MOV     WORD DS:[SI + C_BULLET_X_OFFSET], 0xFFFF    ; invalidate bullet
+            MOV     WORD DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT], 0  ; set frames since last damages to zero
             MOVZX   CX, BYTE DS:[SI + C_BULLET_DAMAGE_OFFSET]   ; load damage into CX
             SUB     WORD DS:[DAT_PLAYER_HEALTH], CX             ; do damage to player
 
@@ -574,6 +628,7 @@ FUNC_LOGIC_STEP:
     MOV     DX, 202                 ; PARAM: X POSITION
     MOV     SI, IMG_HEALTH_UNDERBAR ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
+    XOR     BH, BH                  ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
 
     ; DRAW HEALTH BAR ONTO SCREEN
@@ -616,6 +671,7 @@ FUNC_LOGIC_STEP:
     MOV     DX, 262                 ; PARAM: X POSITION
     MOV     SI, IMG_BOOST_UNDERBAR  ; PARAM: IMAGE (RL-encoded)
     MOV     BL, 0xFF                ; PARAM: BITMASK
+    XOR     BH, BH                   ; PARAM: ORMASK
     CALL    FUNC_DRAW_IMAGE
 
     ; DRAW BOOST BAR ONTO SCREEN
@@ -661,38 +717,26 @@ FUNC_LOGIC_STEP:
 
 ;************************************************************************************************************************************************************
 ; VOID FRAME_WAIT()
-; runs a loop until approximately 30 ms has elapsed from the time stored in DAT_LAST_FRAME_UPDATE
+; burns cycles until a new frame can be stepped, as determined by the VGA screen's V-REFRESH rate (usually 60Hz). Skips every other frame for 30 FPS.
 ;************************************************************************************************************************************************************
 ; ( PARAMS )
 ; NONE
 ;
 FUNC_FRAME_WAIT:
-    MOV     AH, 0x2C        ; get the system time
-    INT     0x21            ; DL = x/100ths of a second
-
-    ; CHECK TO SEE IF A FRAME CAN PASS ;
-    MOV     DH, DL          ; store new time in DH, as we will be changing the time in DL for math
-    CMP     DL, BYTE [DAT_LAST_FRAME_UPDATE]
-    JAE     LAB_NO_TIMEWRAP ; since time wraps from 0-99, we need to check if OLD is bigger than NEW (true if time has wrapped). If so, perform a different operation
-    LAB_TIMEWRAP:
-        ; PERFORM DIFF = NEW + (100 - OLD) ;
-        MOV     AL, 100     ; load 100 into AL for subtraction
-        SUB     AL, BYTE [DAT_LAST_FRAME_UPDATE]  ; subtract OLD from AL, or OLD from 100
-        ADD     DL, AL      ; add the result of (100 - OLD) to NEW
-        JMP     LAB_CHECK_TIMEDIFF  ; see if we can step frame
-
-    LAB_NO_TIMEWRAP:
-        ; PERFORM DIFF = NEW - OLD ;
-        SUB     DL, BYTE [DAT_LAST_FRAME_UPDATE]    ; sub OLD from NEW
-
-    LAB_CHECK_TIMEDIFF:
-        ; IF DIFF >= 3, STEP FRAME. OTHERWISE, LOOP AGAIN ;
-        CMP     DL, 3       ; check if the result >= 5 (>= 50 ms, about 20 FPS). Clock resolution may limit this to 20 FPS though (~50 ms resolution)
-        JNAE    FUNC_FRAME_WAIT ; loop if frame cannot be passed
-
-        ; STEP FRAME ;
-        MOV     BYTE [DAT_LAST_FRAME_UPDATE], DH    ; update LAST_FRAME_UPDATE, we're stepping frames.
-        JMP     FUNC_LOGIC_STEP ; STEP FRAME IF ABOVE 30 MS HAS PASSED
+    XOR     CX, CX                      ; use this as our retrace counter - we want to run at about 30 FPS, so wait for two retraces before drawing
+    MOV     DX, C_VRETRACE_PORT     
+    LAB_CHECK_VGA_STATUS:
+        IN      AX, DX                  ; load VGA status flags into AL
+        BT      AX, C_FLAG_VGA_RETRACE  ; check if a VGA retrace is occurring. If it is, wait until it is not (to ensure we don't start at the end of a retrace and lose time)
+        JC      LAB_CHECK_VGA_STATUS
+    INC     CX                      ; oop- a VGA retrace is no longer occurring! Wait until a new one does occur and then loop this again (skip one refesh)
+    LAB_WAIT_FOR_VGA_DRAW:
+        IN      AX, DX                  ; load VGA status flags into AL
+        BT      AX, C_FLAG_VGA_RETRACE  ; check if a VGA retrace is occurring. If it is, check if CX == 2. If it is not, loop LAB_CHECK_VGA_STATUS again. Otherwise, call FUNC_LOGIC_STEP
+        JNC     LAB_WAIT_FOR_VGA_DRAW   ; if a VGA retrace has not occurred yet, check again
+        CMP     CX, 2                   
+        JNE     LAB_CHECK_VGA_STATUS    ; if CX != 2, wait for another retrace to occur before stepping login
+        JMP     FUNC_LOGIC_STEP         ; if CX == 2, we can step logic
 
 
 ;************************************************************************************************************************************************************
@@ -887,7 +931,7 @@ FUNC_QUIT_GAME:
     CLI
 
     ; RESTORE OLD IVT ENTRY ;
-    MOV AX, 0x0000      ; load IVT segment into ES
+    XOR AX, AX          ; load IVT segment into ES
     MOV ES, AX
 
     MOV AX, 0x0024      ; load IVT INT 0x09 offset into DI
@@ -920,6 +964,7 @@ FUNC_QUIT_GAME:
 ; AX: [UINT16]  YPOS    - the y position of the image's top left pixel
 ; DX: [UINT16]  XPOS    - the x position of the image's top left pixel
 ; BL: [UINT8]   BITMASK - the bitmask applied to drawn pixels on the screen.
+; BH: [UINT8]   ORMASK  - the value to be or'd onto any pixel value displayed in the entity (besides transparent pixels). Applied before bitmask.
 ; SI: [NPTR]    IMAGE   - the offset of the image from DS
 ;
 FUNC_DRAW_IMAGE:
@@ -945,7 +990,7 @@ FUNC_DRAW_IMAGE:
     MOV     DI, AX  ; save (Y * 320) + X in DI
 
     PUSH    DX              ; save DX in the stack, we will retreive this value to keep track of original parameter
-    MOV     DX, 0           ; use DX to keep track of how many pixels have been drawn this line
+    XOR     DX, DX          ; use DX to keep track of how many pixels have been drawn this line
     LAB_DRAW_LOOP:
         MOV     CL, BYTE [SI]   ; load run length into CL, draw pixel into CH
         MOV     CH, BYTE [SI + 1]
@@ -963,12 +1008,16 @@ FUNC_DRAW_IMAGE:
             JAE     lAB_FIND_NEXT_LINE
 
             MOV     BYTE ES:[DI], CH        ; draw pixel
+            OR      BYTE ES:[DI], BH
             AND     BYTE ES:[DI], BL
             MOV     BYTE ES:[DI + 1], CH    ; draw pixel again
+            OR      BYTE ES:[DI + 1], BH
             AND     BYTE ES:[DI + 1], BL
             MOV     BYTE ES:[DI + 320], CH  ; drawing 2x2 pixel for every "pixel" of image, so we need to MOV and AND 4 pixels
+            OR      BYTE ES:[DI + 320], BH
             AND     BYTE ES:[DI + 320], BL
             MOV     BYTE ES:[DI + 321], CH
+            OR      BYTE ES:[DI + 321], BH
             AND     BYTE ES:[DI + 321], BL
             ADD     DI, 2               ; add two to DI
             ADD     DX, 2               ; add two to DX, keeping track of how many pixels were drawn on this line
@@ -995,20 +1044,18 @@ FUNC_DRAW_IMAGE:
             LAB_ITERATE_IMAGE_CHECKER:
                 ADD     SI, 2               ; move SI onto the next pixel
                 JMP     lAB_FIND_NEXT_LINE  ; continue looping
-
-
              
         LAB_DRAW_NEWLINE:
         ADD     DI, 640             ; move DI down two lines
         SUB     DI, DX              ; subtract DX to set the draw cursor to the original x position
-        MOV     DX, 0               ; reset drawnPixels counter
+        XOR     DX, DX              ; reset drawnPixels counter
         INC     SI                  ; move onto next byte
         JMP     LAB_DRAW_LOOP
 
         LAB_PIXEL_ZERO:
         TEST    CL, CL      
         JZ LAB_STOP_DRAW_LOOP   ; if both bytes are zero, then the image has ended, stop the loop
-        MOV     CH, 0           ; set CH to zero to make CX = CL
+        XOR     CH, CH          ; set CH to zero to make CX = CL
         SHL     CX, 1           ; multiply CX by two
         ADD     DI, CX          ; if only the draw byte is zero, then just move draw cursor forward CL * 2 pixels
         ADD     DX, CX          ; we "drew" this many pixels as well
@@ -1094,14 +1141,39 @@ FUNC_RENDER_SCREEN:
     PUSH    DX
     PUSH    SI
     PUSH    DI
+    PUSH    ES
 
     ; UPDATE PLAYER STATS ;
 
     ; DRAW PLAYER ;
+    XOR     BH, BH                          ; PARAM: ORMASK
     MOV     AX, WORD [DAT_PLAYER_POS_Y]     ; PARAM: DRAW Y
     MOV     DX, WORD [DAT_PLAYER_POS_X]     ; PARAM: DRAW X
     MOV     SI, IMG_PLAYER_SPACESHIP        ; PARAM: IMAGE (RL-encoded)
+    TEST    BL, BL                          ; if the screen being rendered is clearing old sprites, don't flash stuff
+    JZ      LAB_DRAW_PLAYER
+
+    ; check player hurt status. If they were hurt within HURT_FLASH_DURATION, make them white. Otherwise, check if they should be drawn at all.
+    CMP     BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT], C_HURT_FLASH_DURATION
+    JA      LAB_CHECK_PLAYER_FLASHING
+    PUSH    BX
+    MOV     BH, 0xFF                        ; make player white
+    MOV     BL, 0x0F
+    CALL    FUNC_DRAW_IMAGE
+    POP     BX
+    JMP     LAB_AFTER_PLAYER_DRAWN
+    
+    ; toggle visibility every 4 frames.
+    LAB_CHECK_PLAYER_FLASHING:
+    MOV     CL, BYTE DS:[DAT_PLAYER_FRAMES_SINCE_LAST_HURT]
+    CMP     CL, C_PLAYERDATA_INVULN_FRAMES  ; if the player isn't invulnerable, display them
+    JA      LAB_DRAW_PLAYER
+    BT      CX, 2                           ; if the result would be even (bit two [shr 2 for division] is cleared), show the player. Otherwise, don't.
+    JC      LAB_AFTER_PLAYER_DRAWN
+
+    LAB_DRAW_PLAYER:
     CALL    FUNC_DRAW_IMAGE                 ; Draw spaceship
+    LAB_AFTER_PLAYER_DRAWN:
 
     ; DRAW ENEMIES ;
     MOV     DI, DAT_ENEMY_ARRAY             ; LOOP THROUGH ENEMY ARRAY
@@ -1118,7 +1190,20 @@ FUNC_RENDER_SCREEN:
             MOV     AX, WORD [DI + C_ENEMY_Y_OFFSET]        ; PARAM: DRAW Y
             MOV     DX, WORD [DI + C_ENEMY_X_OFFSET]        ; PARAM: DRAW X
             MOV     SI, WORD [DI + C_ENEMY_IMAGE_OFFSET]    ; PARAM: IMAGE
+            XOR     BH, BH                                  ; PARAM: ORMASK
+            CMP     BYTE DS:[DI + C_ENEMY_HURT_FRAMES_OFFSET], C_HURT_FLASH_DURATION
+            JNBE    LAB_NO_ENEMY_HURT_FLASH                 ; if the enemy was last hurt within C_HURT_FLASH_DURATION frames, display them as a white flash
+            TEST    BL, BL                                  ; if BL == 0, this means we are clearing old sprites and should not flash
+            JZ      LAB_NO_ENEMY_HURT_FLASH
+            PUSH    BX
+            MOV     BH, 0xFF                                ; FLASH ENEMY: set ORMASK to 0xFF to control display colors and set BITMASK
+            MOV     BL, 0x0F
             CALL    FUNC_DRAW_IMAGE
+            POP     BX
+            JMP     LAB_AFTER_FLASH_DRAWN
+            LAB_NO_ENEMY_HURT_FLASH:
+            CALL    FUNC_DRAW_IMAGE
+            LAB_AFTER_FLASH_DRAWN:
 
         LAB_DRAW_ENEMY_CONTINUE:
             ADD     DI, C_ENEMY_SIZE_BYTES          ; iterate to next element of ENEMY ARRAY
@@ -1140,6 +1225,7 @@ FUNC_RENDER_SCREEN:
             MOV     AX, WORD [DI + C_BULLET_Y_OFFSET]       ; PARAM: DRAW Y
             MOV     DX, WORD [DI + C_BULLET_X_OFFSET]       ; PARAM: DRAW X
             MOV     SI, WORD [DI + C_BULLET_IMAGE_OFFSET]   ; PARAM: IMAGE (RL-encoded)
+            XOR     BH, BH                                  ; PARAM: ORMASK
             CALL    FUNC_DRAW_IMAGE
 
         LAB_DRAW_BULLET_CONTINUE:
@@ -1147,9 +1233,28 @@ FUNC_RENDER_SCREEN:
             CMP     DI, DAT_END_OF_BULLET_ARRAY         ; if we're at the end of BULLET ARRAY, terminate loop
             JB      LAB_DRAW_BULLET_LOOP                      
 
-    ; DRAW SCORE ;
+    ; CLEAR SCORE FROM SCREEN ;
+    MOV     DX, 10              ; each number is 5 pixels tall
+    MOV     AX, 0xA000          
+    MOV     ES, AX              ; load VGA segment into ES
+    MOV     AX, 0x0000          ; clearing screen, print black pixels
+    MOV     DI, (4 * 320) + 72  ; DS:[4 * 320 + 72] or coordinates (72, 4) is where the numbers start being drawn
 
+    LAB_CLEAR_SCORE_LOOP:
+    MOV     CX, 25              ; the numbers each take up 5 pixels, and the longest a number can be is 5 characters (65535)
+    REP STOSW
+    ADD     DI, 320 - 50        ; move to the next line to clear
+    DEC     DX    
+    JNZ     LAB_CLEAR_SCORE_LOOP
 
+    ; DISPLAY SCORE ONTO SCREEN ;
+    MOV     AX, 4                           ; PARAM: Y POSITION
+    MOV     DX, 72                          ; PARAM: X POSITION
+    MOV     BL, 0x2C                        ; PARAM: NUMBER COLOR
+    MOV     CX, WORD DS:[DAT_PLAYER_SCORE]  ; PARAM: NUMBER TO DISPLAY
+    CALL    FUNC_DISPLAY_DEC_NUMBER
+
+    POP     ES
     POP     DI
     POP     SI
     POP     DX
@@ -1165,14 +1270,14 @@ FUNC_RENDER_SCREEN:
 ; ( PARAMS )
 ; AX    : [UINT16]  YPOS    - the y position of the bullets's top left pixel
 ; DX    : [UINT16]  XPOS    - the x position of the bullet's top left pixel
-; [BP+8]: [UINT16]  HEALTH  - how much damage the enemy can take before being deleted
-; [BP+6]: [UINT16]  FLAGS   - controls certain behaviors of the enemy
+; CX    : [UINT16]  SCORE   - the amount of score gained when this enemy is killed
+; [BP+6]: [INT16]   HEALTH  - how much damage the enemy can take before being deleted
 ; BH    : [UINT8]   SPEED   - how much the position of the enemy is incremented by every frame
 ; BL    : [UINT8]   DAMAGE  - how much damage the enemy's bullets do if they collide with something
 ; SI    : [NPTR]    IMAGE   - the offset of the bullet's image from DS
 ; [BP+4]: [NPTR]    CODE    - the function executed every frame by the enemy - VOID ENEMY_AI(ENEMY* ENEMY_PTR)
-; [BP+2]: [UINT8]   FIRERATE- how often, in frames (20 FPS), the enemy can fire
-;
+; [BP+1]: [UINT8]   FIRERATE- how often, in frames (30 FPS), the enemy can fire
+; [BP+2]: [UINT8]   FLAGS   - controls certain behaviors of the enemy
 FUNC_CREATE_ENEMY:
     ; SET UP STACK FRAME
     PUSH    BP
@@ -1199,28 +1304,29 @@ FUNC_CREATE_ENEMY:
         LAB_CREATE_ENEMY:
         MOV     WORD DS:[DI + C_ENEMY_X_OFFSET], DX         ; ENEMY X
         MOV     WORD DS:[DI + C_ENEMY_Y_OFFSET], AX         ; ENEMY Y
-        MOV     AX, SS:[BP + 8]; load PARAM:FLAGS in AX
-        MOV     WORD DS:[DI + C_ENEMY_FLAGS_OFFSET], AX     ; ENEMY FLAGS
-        MOV     AX, SS:[BP + 10]; load PARAM:HEALTH in AX
+        MOV     WORD DS:[DI + C_ENEMY_SCORE_WORTH_OFFSET], CX   ; ENEMY SCORE
+        MOV     AX, WORD SS:[BP + 4]; load PARAM:FLAGS and PARAM:FIRERATE in AX
+        MOV     BYTE DS:[DI + C_ENEMY_FLAGS_OFFSET], AL     ; ENEMY FLAGS
+        MOV     BYTE DS:[DI + C_ENEMY_FIRERATE_OFFSET], AH  ; ENEMY FIRERATE
+        MOV     AX, SS:[BP + 8]; load PARAM:HEALTH in AX
         MOV     WORD DS:[DI + C_ENEMY_HEALTH_OFFSET], AX    ; ENEMY HEALTH
         MOV     BYTE DS:[DI + C_ENEMY_SPEED_OFFSET], BH     ; ENEMY SPEED
         MOV     BYTE DS:[DI + C_ENEMY_DAMAGE_OFFSET], BL    ; ENEMY DAMAGE
         MOV     WORD DS:[DI + C_ENEMY_IMAGE_OFFSET], SI     ; ENEMY IMAGE
         MOV     AX, SS:[BP + 6]; load PARAM:CODE in AX
         MOV     WORD DS:[DI + C_ENEMY_CODE_OFFSET], AX      ; ENEMY CODE
-        MOV     AH, SS:[BP + 4]; load PARAM:FIRERATE in AH
-        MOV     BYTE DS:[DI + C_ENEMY_FIRERATE_OFFSET], AH  ; ENEMY FIRERATE
         MOV     BYTE DS:[DI + C_ENEMY_ATTACK_FRAME_OFFSET], 0xFF    ; set enemy time since attack to be max (so it is reloaded upon creation)
         MOV     BX, WORD DS:[DI + C_ENEMY_IMAGE_OFFSET]
         MOV     AX, WORD DS:[BX - 2]                        ; load image height into AH, image width into AL
-        MOV     BYTE DS:[DI + C_ENEMY_IMAGE_WIDTH_OFFSET], AL
+        MOV     BYTE DS:[DI + C_ENEMY_IMAGE_HEIGHT_OFFSET], AL
         MOV     BYTE DS:[DI + C_ENEMY_IMAGE_WIDTH_OFFSET], AH
+        MOV     BYTE DS:[DI + C_ENEMY_HURT_FRAMES_OFFSET], 0xFF     ; set enemy time since hurt to be max (so it doesn't flash upon creation)
 
     LAB_END_CREATE_ENEMY:
     POP     DI
     ; COLLAPSE STACK FRAME
     MOV     BX, SS:[BP + 2] ; load return address into BX
-    ADD     SP, 10          ; clear last 10 bytes of stack (5 push calls were made, including return address)
+    ADD     SP, 8           ; clear last 8 bytes of stack (4 push calls were made, including return address, not including original BP)
     POP     BP              ; return original BP
     JMP     BX              ; RET
 
@@ -1343,8 +1449,18 @@ AI_ALIEN_SPITTER:
     POP     AX
     RET
 
+;************************************************************************************************************************************************************
+; VOID KILL_PLAYER()
+; Stops the game, displays a cool transition effect, and says "YOU DIED!" and the player's score on the screen.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; NONE
+;
 FUNC_KILL_PLAYER:
 
+
+
+    RET
 
 ;************************************************************************************************************************************************************
 ; VOID DISPLAY_DEC_NUMBER(UINT16 NUM, UINT16 X, UINT16 Y, UINT8 COLOR)
@@ -1362,7 +1478,7 @@ FUNC_DISPLAY_DEC_NUMBER:
     PUSH    SI
     PUSH    0x0000          ; local variable, used to keep track of division results after FUNC_DISPLAY_DEC_DIGIT calls
 
-    MOV     BH, 0           ; clear BH, we will be using it for flags and parameters
+    XOR     BH, BH          ; clear BH, we will be using it for flags and parameters
     MOV     AX, CX          ; use AX as y-param for consistency, but we're just gonna slap display number into AX anyways
     MOV     SI, SP          ; load SP into SI because for some dumb reason SP cannot be used for addressing
     MOV     CX, 10000       ; biggest multiple of 10 that we can store in a uint16 is 10k, start by dividing by that
