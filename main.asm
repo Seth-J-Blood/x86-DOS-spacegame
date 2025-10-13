@@ -95,7 +95,7 @@ C_BULLET_FLAG_HOSTILE       EQU 2       ; if true, the bullet will damage the pl
 
 ; ENEMY CONSTANTS ;
 C_ENEMY_MAX_ENEMIES         EQU 15
-C_ENEMY_SIZE_BYTES          EQU 20
+C_ENEMY_SIZE_BYTES          EQU 22
 C_ENEMY_X_OFFSET            EQU 0       ; word
 C_ENEMY_Y_OFFSET            EQU 2       ; word
 C_ENEMY_HURT_FRAMES_OFFSET  EQU 4       ; byte
@@ -110,11 +110,19 @@ C_ENEMY_ATTACK_FRAME_OFFSET EQU 16      ; byte
 C_ENEMY_FIRERATE_OFFSET     EQU 17      ; byte
 C_ENEMY_IMAGE_WIDTH_OFFSET  EQU 18      ; byte
 C_ENEMY_IMAGE_HEIGHT_OFFSET EQU 19      ; byte
+C_ENEMY_MOVEFRAMES_OFFSET   EQU 20      ; byte
+C_ENEMY_RESERVED_OFFSET     EQU 21      ; byte
+
+; SPECIFIC ENEMY CONSTANTS ;
+C_ENEMY_SPITTER_MOVERATE    EQU 2       ; spitter moves at 1/2 speed (speed / moverate)
+C_ASTEROID_NUM_IMAGES       EQU 1
 
 
 ;************************************************************************************************************************************************************
 ;                                                                   ( .DATA SECTION )
 ;************************************************************************************************************************************************************
+    DAT_RANDOM_KEY                      DW  0xF34E                  ; dunno, random number kinda
+
     DAT_KEY_STATES                      DB  0x00                    ; [FLAGS8] contains key states. See C_FLAGs for flag bit offsets
 
     DAT_PLAYER_FLAGS                    DB  0x00                    ; [FLAGS8] contains states about the player
@@ -197,12 +205,30 @@ C_ENEMY_IMAGE_HEIGHT_OFFSET EQU 19      ; byte
                                         DB 2, 0x00, 1, 0x22, 3, 0x23, 1, 0x22, 0
                                         DB 1, 0x06, 1, 0x22, 1, 0x00, 3, 0x22, 0
 
+                                        DB 24, 22
+    IMG_ASTEROID_1                      DB 5, 0x00, 3, 0x11, 0
+                                        DB 3, 0x00, 2, 0x11, 3, 0xA2, 1, 0x11, 0
+                                        DB 2, 0x00, 2, 0x11, 4, 0xA2, 2, 0x11, 0
+                                        DB 1, 0x00, 1, 0x11, 3, 0xA2, 1, 0x11, 4, 0xA2, 1, 0x11, 0
+                                        DB 1, 0x11, 2, 0xA2, 1, 0x11, 4, 0xA2, 1, 0x11, 1, 0xA2, 1, 0x11, 0
+                                        DB 1, 0x11, 3, 0xA2, 3, 0x11, 1, 0xA2, 1, 0x11, 1, 0xA2, 1, 0x11, 0
+                                        DB 1, 0x11, 10, 0xA2, 1, 0x11, 0
+                                        DB 1, 0x11, 2, 0xA2, 1, 0x11, 4, 0xA2, 1, 0x11, 2, 0xA2, 1, 0x11, 0
+                                        DB 1, 0x00, 1, 0x11, 5, 0xA2, 2, 0x11, 2, 0xA2, 1, 0x11, 0
+                                        DB 2, 0x00, 4, 0x11, 4, 0xA2, 1, 0x11, 0
+                                        DB 6, 0x00, 4, 0x11, 0, 0
 
     IMG_NUMBERMAP                       DB 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
                                         DB 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0xFF
                                         DB 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
                                         DB 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF
                                         DB 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+
+    IMG_OPTIMIZED_NUMBERMAP             DB 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+                                        DB 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF
+                                        DB 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+                                        DB 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0xFF
+                                        DB 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF
 
     DAT_BULLET_ARRAY                    TIMES C_BULLET_MAX_BULLETS * (C_BULLET_SIZE_BYTES / 2) DW 0xFFFF    ; 0xFFFF (above 320/200) for pos data means free slot
     DAT_END_OF_BULLET_ARRAY:
@@ -213,6 +239,8 @@ C_ENEMY_IMAGE_HEIGHT_OFFSET EQU 19      ; byte
     STR_QUIT_MSG                        DB  'Shutdown was initiated! Error code: ?', 0x0A, 0x0D, '$'
     STR_DEBUG_MSG                       DB  '!DEBUG!', 0x0A, 0x0D, '$'
 
+    DAT_ASTEROID_IMAGES                 DW  IMG_ASTEROID_1
+
     ALL_ENEMY_STATS:
     STRUCT_ENEMY_SPITTER:
         DW  150                 ; SCORE WORTH
@@ -221,6 +249,7 @@ C_ENEMY_IMAGE_HEIGHT_OFFSET EQU 19      ; byte
         DB  15                  ; FIRERATE
         DW  IMG_ALIEN_SPITTER   ; IMAGE
         DB  1                   ; SPEED
+        DB  3                   ; SPEED RATE
         DB  3                   ; DAMAGE
         DW  AI_ALIEN_SPITTER    ; CODE
 
@@ -329,6 +358,18 @@ FUNC_INIT_GAME:
     MOV     SI, IMG_ALIEN_SPITTER   ; PARAM: IMAGE (RL-encoded)
     PUSH    AI_ALIEN_SPITTER        ; PARAM: AI CODE
     PUSH    0x00 | (60 << 8)        ; PARAM: FLAGS + FIRERATE
+    CALL    FUNC_CREATE_ENEMY
+
+    ; TEST: CREATE ASTEROID ;
+    MOV     AX, 100
+    MOV     DX, 200
+    MOV     CX, 0
+    PUSH    20
+    MOV     BL, 1
+    MOV     BH, 1
+    MOV     SI, IMG_ASTEROID_1
+    PUSH    AI_ASTEROID
+    PUSH    0x0000
     CALL    FUNC_CREATE_ENEMY
 
     ; START MAIN LOOP ;
@@ -748,9 +789,9 @@ FUNC_FRAME_WAIT:
 ;
 FUNC_DEBUG_MSG:
 
-    MOV AH, 0x09
-	MOV DX, STR_DEBUG_MSG
-	INT 0x21
+    MOV     AH, 0x09
+	MOV     DX, STR_DEBUG_MSG
+	INT     0x21
 
     RET
 
@@ -763,27 +804,54 @@ FUNC_DEBUG_MSG:
 ; NONE
 ;
 FUNC_DEBUG_VGA:
-    PUSH ES
-    PUSH DI
-    PUSH AX
+    PUSH    ES
+    PUSH    DI
+    PUSH    AX
 
-    MOV AX, 0xA000
-    MOV ES, AX
+    MOV     AX, 0xA000
+    MOV     ES, AX
 
-    MOV AX, WORD [DAT_DEBUG_PIXEL_X]
-    MOV DI, AX
+    MOV     AX, WORD [DAT_DEBUG_PIXEL_X]
+    MOV     DI, AX
 
-    MOV AL, 12
-    MOV BYTE ES:[DI], AL
+    MOV     AL, 12
+    MOV     BYTE ES:[DI], AL
 
-    MOV AX, 1
-    ADD WORD [DAT_DEBUG_PIXEL_X], AX
+    MOV     AX, 1
+    ADD     WORD [DAT_DEBUG_PIXEL_X], AX
 
-    POP AX
-    POP DI
-    POP ES
+    POP     AX
+    POP     DI
+    POP     ES
     RET
 
+;************************************************************************************************************************************************************
+; UINT16 RANDOM_INT()
+; returns a psuedorandom int16 generated from the DAT_RANDOM_KEY and 16-bit xorshift.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; NONE
+;
+; ( RETURNS )
+; AX: [UINT16] RESULT   - the randomly-generated uint16. Also contained in DAT_RANDOM_KEY.
+;
+FUNC_RANDOM_INT:
+    PUSH    BX
+    MOV     AX, WORD DS:[DAT_RANDOM_KEY]
+    MOV     BX, AX
+    SHL     BX, 7
+    XOR     AX, BX 
+    MOV     BX, AX
+    SHR     BX, 9
+    XOR     AX, BX
+    MOV     BX, AX
+    SHL     BX, 8
+    XOR     AX, BX
+
+    MOV     WORD DS:[DAT_RANDOM_KEY], AX
+
+    POP BX
+    RET
 
 ;************************************************************************************************************************************************************
 ; VOID HANDLE_KEY()
@@ -1007,18 +1075,18 @@ FUNC_DRAW_IMAGE:
             CMP     AX, 319
             JAE     lAB_FIND_NEXT_LINE
 
+            OR      CH, BH
+            AND     CH, BL
             MOV     BYTE ES:[DI], CH        ; draw pixel
-            OR      BYTE ES:[DI], BH
-            AND     BYTE ES:[DI], BL
+            OR      CH, BH
+            AND     CH, BL
             MOV     BYTE ES:[DI + 1], CH    ; draw pixel again
-            OR      BYTE ES:[DI + 1], BH
-            AND     BYTE ES:[DI + 1], BL
+            OR      CH, BH
+            AND     CH, BL
             MOV     BYTE ES:[DI + 320], CH  ; drawing 2x2 pixel for every "pixel" of image, so we need to MOV and AND 4 pixels
-            OR      BYTE ES:[DI + 320], BH
-            AND     BYTE ES:[DI + 320], BL
+            OR      CH, BH
+            AND     CH, BL
             MOV     BYTE ES:[DI + 321], CH
-            OR      BYTE ES:[DI + 321], BH
-            AND     BYTE ES:[DI + 321], BL
             ADD     DI, 2               ; add two to DI
             ADD     DX, 2               ; add two to DX, keeping track of how many pixels were drawn on this line
 
@@ -1268,13 +1336,13 @@ FUNC_RENDER_SCREEN:
 ; creates an enemy at x, y with the passed stats. Automatically cleans up passed stack parameters.
 ;************************************************************************************************************************************************************
 ; ( PARAMS )
-; AX    : [UINT16]  YPOS    - the y position of the bullets's top left pixel
-; DX    : [UINT16]  XPOS    - the x position of the bullet's top left pixel
+; AX    : [UINT16]  YPOS    - the y position of the enemy's top left pixel
+; DX    : [UINT16]  XPOS    - the x position of the enemy's top left pixel
 ; CX    : [UINT16]  SCORE   - the amount of score gained when this enemy is killed
 ; [BP+6]: [INT16]   HEALTH  - how much damage the enemy can take before being deleted
 ; BH    : [UINT8]   SPEED   - how much the position of the enemy is incremented by every frame
 ; BL    : [UINT8]   DAMAGE  - how much damage the enemy's bullets do if they collide with something
-; SI    : [NPTR]    IMAGE   - the offset of the bullet's image from DS
+; SI    : [NPTR]    IMAGE   - the offset of the enemy's image from DS
 ; [BP+4]: [NPTR]    CODE    - the function executed every frame by the enemy - VOID ENEMY_AI(ENEMY* ENEMY_PTR)
 ; [BP+1]: [UINT8]   FIRERATE- how often, in frames (30 FPS), the enemy can fire
 ; [BP+2]: [UINT8]   FLAGS   - controls certain behaviors of the enemy
@@ -1302,25 +1370,26 @@ FUNC_CREATE_ENEMY:
         JMP     LAB_CREATE_ENEMY_LOOP       ; if iterator < end of array, continue loop
 
         LAB_CREATE_ENEMY:
-        MOV     WORD DS:[DI + C_ENEMY_X_OFFSET], DX         ; ENEMY X
-        MOV     WORD DS:[DI + C_ENEMY_Y_OFFSET], AX         ; ENEMY Y
-        MOV     WORD DS:[DI + C_ENEMY_SCORE_WORTH_OFFSET], CX   ; ENEMY SCORE
-        MOV     AX, WORD SS:[BP + 4]; load PARAM:FLAGS and PARAM:FIRERATE in AX
-        MOV     BYTE DS:[DI + C_ENEMY_FLAGS_OFFSET], AL     ; ENEMY FLAGS
-        MOV     BYTE DS:[DI + C_ENEMY_FIRERATE_OFFSET], AH  ; ENEMY FIRERATE
-        MOV     AX, SS:[BP + 8]; load PARAM:HEALTH in AX
-        MOV     WORD DS:[DI + C_ENEMY_HEALTH_OFFSET], AX    ; ENEMY HEALTH
-        MOV     BYTE DS:[DI + C_ENEMY_SPEED_OFFSET], BH     ; ENEMY SPEED
-        MOV     BYTE DS:[DI + C_ENEMY_DAMAGE_OFFSET], BL    ; ENEMY DAMAGE
-        MOV     WORD DS:[DI + C_ENEMY_IMAGE_OFFSET], SI     ; ENEMY IMAGE
-        MOV     AX, SS:[BP + 6]; load PARAM:CODE in AX
-        MOV     WORD DS:[DI + C_ENEMY_CODE_OFFSET], AX      ; ENEMY CODE
+        MOV     WORD DS:[DI + C_ENEMY_X_OFFSET], DX                 ; ENEMY X
+        MOV     WORD DS:[DI + C_ENEMY_Y_OFFSET], AX                 ; ENEMY Y
+        MOV     WORD DS:[DI + C_ENEMY_SCORE_WORTH_OFFSET], CX       ; ENEMY SCORE
+        MOV     AX, WORD SS:[BP + 4]                                ; load PARAM:FLAGS and PARAM:FIRERATE in AX
+        MOV     BYTE DS:[DI + C_ENEMY_FLAGS_OFFSET], AL             ; ENEMY FLAGS
+        MOV     BYTE DS:[DI + C_ENEMY_FIRERATE_OFFSET], AH          ; ENEMY FIRERATE
+        MOV     AX, SS:[BP + 8]                                     ; load PARAM:HEALTH in AX        
+        MOV     WORD DS:[DI + C_ENEMY_HEALTH_OFFSET], AX            ; ENEMY HEALTH
+        MOV     BYTE DS:[DI + C_ENEMY_SPEED_OFFSET], BH             ; ENEMY SPEED
+        MOV     BYTE DS:[DI + C_ENEMY_DAMAGE_OFFSET], BL            ; ENEMY DAMAGE
+        MOV     WORD DS:[DI + C_ENEMY_IMAGE_OFFSET], SI             ; ENEMY IMAGE
+        MOV     AX, SS:[BP + 6]                                     ; load PARAM:CODE in AX      
+        MOV     WORD DS:[DI + C_ENEMY_CODE_OFFSET], AX              ; ENEMY CODE
         MOV     BYTE DS:[DI + C_ENEMY_ATTACK_FRAME_OFFSET], 0xFF    ; set enemy time since attack to be max (so it is reloaded upon creation)
-        MOV     BX, WORD DS:[DI + C_ENEMY_IMAGE_OFFSET]
-        MOV     AX, WORD DS:[BX - 2]                        ; load image height into AH, image width into AL
+        MOV     BX, WORD DS:[DI + C_ENEMY_IMAGE_OFFSET]             ; e
+        MOV     AX, WORD DS:[BX - 2]                                ; load image height into AH, image width into AL
         MOV     BYTE DS:[DI + C_ENEMY_IMAGE_HEIGHT_OFFSET], AL
         MOV     BYTE DS:[DI + C_ENEMY_IMAGE_WIDTH_OFFSET], AH
         MOV     BYTE DS:[DI + C_ENEMY_HURT_FRAMES_OFFSET], 0xFF     ; set enemy time since hurt to be max (so it doesn't flash upon creation)
+        MOV     BYTE DS:[DI + C_ENEMY_MOVEFRAMES_OFFSET], 0xFF      ; set enemy time since moved to be max (so it instantly moves upon creation)
 
     LAB_END_CREATE_ENEMY:
     POP     DI
@@ -1329,6 +1398,54 @@ FUNC_CREATE_ENEMY:
     ADD     SP, 8           ; clear last 8 bytes of stack (4 push calls were made, including return address, not including original BP)
     POP     BP              ; return original BP
     JMP     BX              ; RET
+
+
+;************************************************************************************************************************************************************
+; VOID CREATE_ASTEROID(UINT16 YPOS, UINT16 XPOS, UINT16 HEALTH, UINT8 SPEED, UINT8 MOVERATE)
+; creates an asteroid at x, y with the passed stats and a randomized image.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; AX    : [UINT16]  YPOS    - the y position of the asteroid's top left pixel
+; DX    : [UINT16]  XPOS    - the x position of the asteroid's top left pixel
+; CX    : [UINT16]  HEALTH  - the amount of health this asteroid has
+; BH    : [UINT8]   SPEED   - the amount of pixels to move (when it can move)
+; BL    : [UINT8]   MOVERATE- how many frames need to pass before a new move can occur
+; 
+FUNC_CREATE_ASTEROID:
+    PUSH    SI
+    PUSH    AX
+
+    MOV     SI, DAT_ENEMY_ARRAY     ; START LOOPING OVER ENEMY ARRAY TO FIND A FREE SLOT
+    LAB_CREATE_ASTEROID_LOOP:
+        ; CHECK STRUCT X (CREATE ASTEROID IF X >= 320)
+        CMP     WORD DS:[SI + C_ENEMY_X_OFFSET], 320    ; if slot.X >= 320, this means the slot is unused.
+        JAE     LAB_CREATE_ASTEROID                     ; if slot.X >= 320, this slot is unused - create an asteroid in this slot
+        
+        CMP     WORD DS:[SI + C_ENEMY_Y_OFFSET], 200    ; if slot.Y >= 200, this means the slot is unused.
+        JAE     LAB_CREATE_ASTEROID                     ; if slot.Y >= 200, this slot is unused - create an asteroid in this slot
+
+    ; SLOT WAS NOT FREE, CONTINUE
+    LAB_CONTINUE_ASTEROID_LOOP:         
+        ADD     SI, C_ENEMY_SIZE_BYTES                  ; increment SI (iterator) to the next position of the enemy array
+        CMP     SI, DAT_END_OF_ENEMY_ARRAY              ; check if SI has gone past the end of the enemy array. If it has, we cannot make a new asteroid.
+        JAE     LAB_NO_ASTEROID                         ; no asteroid :(
+        JMP     LAB_CREATE_ASTEROID_LOOP                ; otherwise, continue loop
+
+    LAB_CREATE_ASTEROID:
+        ; CREATE NEW ASTEROID
+        PUSH    DI                  ; we need DI, since SP cannot be used for addressing
+        MOV     DI, SP              ; load last-pushed item in stack's address into DI (SP cannot be used for addressing)
+        MOV     AX, WORD SS:[DI + 2]; load old AX into AX without damaging stack
+        POP     DI
+
+        ; LOAD PARAMS
+        ; TODO LEFT OFF
+
+
+    LAB_NO_ASTEROID:
+    POP     AX
+    POP     SI
+    RET
 
 
 ;************************************************************************************************************************************************************
@@ -1346,8 +1463,13 @@ AI_ALIEN_SPITTER:
     PUSH    SI
 
     ; UPDATE POSITION ;
+    INC     BYTE DS:[SI + C_ENEMY_MOVEFRAMES_OFFSET]    ; increment frames since last moved
+    CMP     BYTE DS:[SI + C_ENEMY_MOVEFRAMES_OFFSET], C_ENEMY_SPITTER_MOVERATE
+    JNAE    LAB_SPITTER_ATTEMPT_FIRE
+
     ; for x, if spitter is not in front of player, make it move backwards (+x), otherwise, make it move to player (-x) until it is within 10 pixels of the player
     MOVZX   CX, BYTE DS:[SI + C_ENEMY_SPEED_OFFSET]
+    MOV     BYTE DS:[SI+C_ENEMY_MOVEFRAMES_OFFSET], 0   ; we're moving, set frames since last moved to zero
     LAB_MOVE_SPITTER_X:
         MOV     AX, WORD DS:[SI + C_ENEMY_X_OFFSET] ; load me.X into AX
         SUB     AX, C_PLAYERDATA_WIDTH              ; subtract player.width from me.X
@@ -1449,6 +1571,33 @@ AI_ALIEN_SPITTER:
     POP     AX
     RET
 
+
+;************************************************************************************************************************************************************
+; VOID AI_ASTEROID(NPTR ME)
+; Just moves the asteroid forwards a set amount
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; SI : [NPTR] ME        - a near pointer to the struct that needs to be updated
+;
+AI_ASTEROID:
+    PUSH    SI
+    PUSH    AX
+
+    INC     BYTE DS:[SI + C_ENEMY_MOVEFRAMES_OFFSET]        ; increment number of frames since last move
+    MOV     AL, BYTE DS:[SI + C_ENEMY_RESERVED_OFFSET]      ; load moverate into AL (moverate located within reserved field of asteroid)
+    CMP     BYTE DS:[SI + C_ENEMY_MOVEFRAMES_OFFSET], AL    ; check if enough frames have elapsed since last move to move again
+    JNAE    LAB_DONT_MOVE_ASTEROID
+    
+    LAB_MOVE_ASTEROID:
+    MOV     BYTE DS:[SI + C_ENEMY_MOVEFRAMES_OFFSET], 0     ; this enemy is moving, make number of frames since last move zero
+    MOVZX   AX, BYTE DS:[SI + C_ENEMY_SPEED_OFFSET]
+    SUB     WORD DS:[SI + C_ENEMY_X_OFFSET], AX             ; move forwards
+
+    LAB_DONT_MOVE_ASTEROID:
+    POP     AX
+    POP     SI
+    RET
+
 ;************************************************************************************************************************************************************
 ; VOID KILL_PLAYER()
 ; Stops the game, displays a cool transition effect, and says "YOU DIED!" and the player's score on the screen.
@@ -1524,6 +1673,63 @@ FUNC_DISPLAY_DEC_NUMBER:
     POP     AX
     RET
 
+
+;************************************************************************************************************************************************************
+; VOID DISPLAY_DEC_NUMBER(UINT16 NUM, UINT16 X, UINT16 Y, UINT8 COLOR)
+; Displays a decimal number to the screen at (x, y), given an unsigned int16, with the passed color.
+;************************************************************************************************************************************************************
+; ( PARAMS )
+; CX : [UINT16] NUM     - the unsigned 16-bit number to be displayed to the screen
+; DX : [UINT16] X       - the x-position of the top left corner of the first digit
+; AX : [UINT16] Y       - the y-position of the top left corner of the first digit
+; BL : [UINT8]  COLOR   - the VGA-pallete color that the number should be displayed in
+;
+FUNC_DISPLAY_DEC_NUMBER_NEW:
+    PUSH    AX
+    PUSH    DX
+    PUSH    SI
+
+    MOV     SI, SS      ; load stack pointer into SI
+    XOR     BH, BH      ; clear BH (if this is not zero, we must display zeroes)
+    XOR     DX, DX      ; clear DX (as division uses DX:AX)
+    MOV     AX, CX      ; load number into accumulator
+    DIV     10000       ; largest multiple of 10 that can be stored in a WORD
+    TEST    AX, AX      ; if result is zero, don't display anything and don't set BH
+    JZ      LAB_DIV_ITERATION_1
+    MOV     BH, AL                  ; PARAM : NUM
+                                    ; PARAM : BITMASK already passed
+    MOV     AX, WORD SS:[SI + 4]    ; PARAM : Y
+    MOV     CX, DX                  ; Save remainder in CX, avoid stack
+    MOV     DX, WORD SS:[SI + 2]    ; PARAM : X
+    CALL    FUNC_DISPLAY_DEC_DIGIT
+
+    INC     BH          ; set BH to nonzero, we've displayed a digit
+    MOV     AX, CX      ; load old remainder into DX
+
+    LAB_DIV_ITERATION_1:
+    MOV    AX, DX       ; load remainder into AX
+    XOR    DX, DX       ; clear DX
+    DIV    1000         ; divide AX by 1000
+    TEST   BH, BH       ; if BH is nonzero, display digit even if it's zero
+    JNZ     LAB_DISPLAY_DIGIT_1
+    TEST   AX, AX       ; if result is zero, don't display anything and don't set BH
+    JZ     LAB_DIV_ITERATION_2
+
+    LAB_DISPLAY_DIGIT_1:
+    MOV     BH, AL                  ; PARAM : NUM
+                                    ; PARAM : BITMASK already passed
+    MOV     AX, WORD SS:[SI + 4]    ; PARAM : Y
+    MOV     ;; TODO
+
+    LAB_DIV_ITERATION_2:
+
+
+
+    POP     SI
+    POP     AX
+    POP     DX
+    RET
+
 ;************************************************************************************************************************************************************
 ; VOID DISPLAY_DEC_DIGIT(UINT8 NUM, UINT8 BITMASK, UINT16 X, UINT16 Y)
 ; Displays a singular decimal digit to the screen, with top left coordinates (X, Y), and bitmask BITMASK. NUM should not be more than 9.
@@ -1557,30 +1763,27 @@ FUNC_DISPLAY_DEC_DIGIT:
     MUL     DL                  ; this clears AH, AL = pixel offset of digit image
 
     MOV     DX, BX              ; save param value into DX to free up BX for addressing
-    MOVZX   BX, AL              ; load offset into BX (I hate this shit)
+    MOVZX   BX, AL              ; load offset into BX
 
     ; START DRAWING ;
     LAB_DRAW_DIGIT_ROW:
     MOV     AL, BYTE DS:[IMG_NUMBERMAP + BX]    ; load pixel value into AL
     AND     AL, DL                              ; apply bitmask to DL
-    MOV     BYTE ES:[DI], AL                    ; draw pixel 1 of 4 into memory
-    MOV     BYTE ES:[DI + 1], AL                ; draw pixel 2 of 4 into memory
-    MOV     BYTE ES:[DI + 320], AL              ; draw pixel 3 of 4 into memory
-    MOV     BYTE ES:[DI + 321], AL              ; draw pixel 4 of 4 into memory
+    MOV     AH, AL                              ; copy AL into AH
+    MOV     WORD ES:[DI], AX                    ; draw pixels 1-2 of 4 into memory
+    MOV     WORD ES:[DI + 320], AX              ; draw pixels 3-4 of 4 into memory
 
     MOV     AL, BYTE DS:[IMG_NUMBERMAP + 1 + BX]; load pixel value into Al
     AND     AL, DL                              ; apply bitmask to AL
-    MOV     BYTE ES:[DI + 2], AL                ; draw pixel 1 of 4 into memory
-    MOV     BYTE ES:[DI + 3], AL                ; draw pixel 2 of 4 into memory
-    MOV     BYTE ES:[DI + 322], AL              ; draw pixel 3 of 4 into memory
-    MOV     BYTE ES:[DI + 323], AL              ; draw pixel 4 of 4 into memory
+    MOV     AH, AL                              ; copy AL into AH
+    MOV     WORD ES:[DI + 2], AX                ; draw pixels 1-2 of 4 into memory
+    MOV     WORD ES:[DI + 322], AX              ; draw pixels 3-4 of 4 into memory
 
     MOV     AL, BYTE DS:[IMG_NUMBERMAP + 2 + BX]; load pixel value into Al
     AND     AL, DL                              ; apply bitmask to AL
-    MOV     BYTE ES:[DI + 4], AL                ; draw pixel 1 of 4 into memory
-    MOV     BYTE ES:[DI + 5], AL                ; draw pixel 2 of 4 into memory
-    MOV     BYTE ES:[DI + 324], AL              ; draw pixel 3 of 4 into memory
-    MOV     BYTE ES:[DI + 325], AL              ; draw pixel 4 of 4 into memory
+    MOV     AH, AL                              ; copy AL into AH
+    MOV     WORD ES:[DI + 4], AX                ; draw pixels 1-2 of 4 into memory
+    MOV     WORD ES:[DI + 324], AX              ; draw pixels 3-4 of 4 into memory
 
     ; DRAW NEXT ROW ;
     ADD     DI, 640                             ; go down 2 pixels on screen
