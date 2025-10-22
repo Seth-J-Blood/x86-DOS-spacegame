@@ -1,0 +1,27 @@
+				---=== [ THE KERNEL ] ===---
+
+The kernel works as follows:
+The kernel has 5 slots for programs to run in, with memory reserved for contexts and data about those programs. The kernel may not be able to run the maximum number of programs at any given time, if the currently active programs take up too much memory for another to start. While no program is focused, the kernel provides a simple GUI that enables intuitive file management, program booting, and preference changes. While another program IS focused, the kernel just runs its HPT (Hung Program Terminator) service in the background, checking every ~55ms. 
+
+				---=== [ PROGRAMS ] ===---
+A "program" on SBOS (Seth Bios Operating System) is an executable flat binary file. Programs' files must follow the EBB (Executable Binary Blob) file format. The format is as follows:
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+| Offset (in hex)	| Size (bytes)  | Field name		| Description										|
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+| 0x0000		| 3		| EBB specifier		| 3 bytes containing the sequence 'EBB'. Lets SBOS know that this .EBB file is valid.	|
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+| 0x0003		| 32		| Program name		| A 32-byte ASCII string that contains the name of the program to display while running.|
+|			|		|			| The string must be null-terminated unless it uses all 32 bytes of space.		|
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+| 0x0023		| 2		| SBOS flags		| 16 flags that tell SBOS how to treat the program while running. Check PROGRAMS>FLAGS	|
+|			|		|			| for what each flags means to SBOS.							|
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+| 0x0025		| 2		| Memory footprint	| An unsigned 16-bit integer that contains the runtime size, in 16-byte segments, of the|
+|			|		|			| .EBB file. SBOS will not run the program if the file size is bigger than this field.	|
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+| 0x0027		| 25		| Reserved		| Reserved for future use. Must be zero.						|
++-----------------------+---------------+-----------------------+---------------------------------------------------------------------------------------+
+
+
+Programs have multiple options when it comes to interfacing with SBOS regarding how they boot, what happens when they are focused, unfocused, and terminated. When booting, a program must specify:
+* Needed runtime size (in # of sectors)		-		UINT16
